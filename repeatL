@@ -1,0 +1,48 @@
+#!/usr/bin/perl
+use 5.014 ; use strict ; use warnings ;
+use Getopt::Std ; getopts "n:w:" , \my%o ;
+$o{n} //= 2 ;
+$o{w} //= 2 ; 
+undef $/ ; 
+my $str = <> ;
+$/= "\n" ;
+chomp $str ;
+my @str = split /\n/,$str,-1 ;
+pop @str if $#str eq '' ;
+for ( 1 .. $o{n} ) { 
+    for ( 0 .. $#str ) { 
+        print join "\t" , ( $str[$_] ) x $o{w} ; 
+        print "\n" ;
+    }
+
+}
+
+
+sub VERSION_MESSAGE { 
+    while ( <DATA> ) { 
+        print $_ if s/^=head1$// .. s/^=cut$// ; 
+    }
+    exit 0 
+}
+
+__END__ 
+
+=encoding utf8 
+
+=head1
+
+    入力された文字列を読み取って、
+    -w で指定された回数ほど横方向に繰り返し、
+    -n で指定された回数ほど縦方向に繰り返して
+    出力する。
+
+    考えられる用途としては、他のコマンドの動作のテストや、
+    計算性能のテストである。
+ 
+ [注意点]
+
+    空行が含まれていた場合、それが横方向の指定回数反復して、タブ区切りで展開されるので、
+    出力は、その部分は空行にならず、よこに大きく広がりうる。
+
+=cut
+
