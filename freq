@@ -1,0 +1,86 @@
+#!/usr/bin/perl 
+use 5.014; use strict; use warnings;
+use List::Util qw{sum} ; 
+use Getopt::Std ;my %o ; getopts "1de:knrsuEKPSW%=" , \%o  ; 
+ 
+my %strcnt;
+my ($sum, $cumsum ) = ( 0 , 0 ) ; # 累和カウンタ
+my $sep = "\t" ; # 出力用セパレータ
+ 
+my ($intflg,$hupflg) = ( 0,0 )  ; 
+$SIG{INT} = sub { $intflg = 1 } ;
+$SIG{HUP} = sub { $hupflg = 1 } ; 
+ 
+print STDERR "\$PID=$$\n"  if $o{P} ; # <- 何をする?? 
+
+my $header; 
+$header = <> if ($o{q/=/} );
+
+& reading() ; ### 1. 読む
+& output() ;  ### 2. 出力する
+exit(0) ;
+
+# ここからは関数
+ 
+sub reading { 
+    while ( <> ) { 
+	chomp ;
+	if ( $o{E} && $_ eq qq{} or $o{W} && /^\s*$/ ) { next ; } # -Eオプションの時は、空文字列を飛ばす -Wのときは空白文字行を飛ばす
+	if ( $o{e} && $_ eq qq{} ) { $_ = $o{e} } ; # -eオプションで、空文字をどの文字列に置き換えるか指定する。
+	$strcnt { $_ } ++ ; 
+	if ( $intflg ) { last } ;
+	if ( $hupflg ) { &output ; $hupflg = 0 } 
+    } 
+}
+ 
+
+sub output { 
+    print $header if ( defined $header ) ;
+    my @k = sort keys %strcnt ; 
+ 
+    if    ( $o{d} ) { @k = grep { $strcnt { $_ } >  1 } @k }  # -d オプションにより、2個以上のもののみを残す。
+    elsif ( $o{u} ) { @k = grep { $strcnt { $_ } == 1 } @k }  # -u オプションにより、2個以上のもののみを残す。
+    if ( $o{n} ) { @k = sort { $strcnt{$a} <=> $strcnt{$b} } @k } # -n オプションによりコンテンツの数であらかじめ、ソートする 
+    if ( $o{k} ) { @k = sort { $a cmp $b } @k }  # -k オプションによりキー文字列であらかじめ、ソートする 
+    if ( $o{K} ) { @k = sort { $a <=> $b } @k }  # -k オプションによりキー文字列であらかじめ、ソートする 
+    if ( $o{r} ) { @k = reverse @k }  # r オプションで逆順ソート
+    if ( $o{'%'} ) { $sum = sum ( values %strcnt ) } ; # '%'オプションにより、まず比率を計算するための総和を計算。
+ 
+    for ( @k ) { 
+    if ( $o{s} ) { 
+        $cumsum += $strcnt { $_ } ;
+        if ( $o{'%'} ) { print sprintf "%5.2f%%$sep", 100.0*$cumsum / $sum } 
+        print $cumsum, $sep ;
+    }     ; # -s オプションにより、累和を表示。
+    if ( $o{'%'} ) { printf "%5.2f%%$sep", 100.0*$strcnt{$_} / $sum } 
+    print +( $strcnt{$_}.$sep ) x ($o{1}?0:1) . $_ ; # -1オプションがあれば個数を表示しない。
+    print "\n" ;
+    } 
+    if ( $o{S} ) { print  sum ( values %strcnt ) , "\n" }  # -S オプションがあれば、最後に合計の数を表示
+}
+
+=encoding utf8
+=head1
+
+freq.pl
+
+オプションに関して
+ 
+    -= ならば、ヘッダがあると見なして処理
+    -e ならで空文字列を -e に続く文字列で置換する。
+    -E ならば空行を数えない
+    -W ならば空白文字だけで構成された行を数えない
+ 
+    -n なら数で整列する    -nr なら逆順にする
+    -k ならキー文字列で整列する    -kr なら逆順にする
+    -K ならキー文字列を数と見なして整列する    -Kr なら逆順にする
+ 
+    -1 なら個数を表示しない。出現したキー文字列のみ表示。
+ 
+    -s で累和を表示
+    -S で合計の行数を表示する。
+     
+    -d オプションにより、2個以上のもののみを残す。
+    -u オプションにより、1個のもののみを残す。
+
+=cut
