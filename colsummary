@@ -1,0 +1,151 @@
+#!/usr/bin/perl
+use 5.014; use strict; use warnings; #  use utf8 ; # confirmed on 5.011 5.014 5.018 
+use List::Util qw/max min maxstr minstr/ ; 
+use List::MoreUtils qw/all firstval pairwise uniq apply part/ ; 
+use POSIX qw/atof strtod/;
+use Scalar::Util qw/looks_like_number/;
+use Term::ANSIColor qw/:constants color/ ; $Term::ANSIColor::AUTORESET = 1 ; 
+use Getopt::Std; getopts "n:mz=" , \my%o ; 
+use PerlIO::gzip ; 
+# 全体的に使う変数
+my $fh ; 
+my @ecoldc ;  # $ecoldc[列番号-1]{データ値} = 度数 となる。 
+my ( $maxcolNum ,$headStr , @colnames ) = 0  ;
+&choreHeader ; 
+&procReading ; # データ行を読む
+&procOutput ;  #読み終わった後のサマリーを表示する
+exit (0) ; 
+
+
+## 主要な処理パーツ
+sub choreHeader { 
+    $o{n} = 6 if ( ! defined $o{n} ) ;
+    
+    if( @ARGV ) { 
+        print STDERR CYAN join ", " , @ARGV ; print "\n" ;
+        open $fh, $o{z}? "<:gzip" : "<"  , shift @ARGV ;  
+    } else {
+        $fh = *STDIN ;  print STDERR RED "stdin\n" ; 
+    }
+    
+    if( $o{'='} ) {
+        $headStr = <$fh> ; chomp $headStr ;  
+        @colnames = split /\t/ , $headStr ;
+    }
+}
+
+sub procReading {
+    my $intflg; 
+    $SIG{INT}=sub{$intflg=1} ; 
+    while ( <$fh> ) { 
+        chomp ; 
+        my @flds = split /\t/ , $_ , -1 ;  # <- ちゃんと最大長までとりだすのに重要(-1)
+        my $colNum = scalar @flds ; 
+        pairwise { $ecoldc[$a]{$b}++  } @{[0 .. $colNum - 1 ]} , @flds ; # 各列の各データ値の度数を集計
+        $maxcolNum = $colNum if $maxcolNum < $colNum ; 
+        last if $intflg ;
+    }
+    close $fh   ;
+}
+sub procOutput { 
+    for ( 0 .. $maxcolNum - 1  ) { 
+        my %thash = %{$ecoldc[$_]} ;  # 各列について、値の度数のハッシュをここで格納。
+        my @vals  = keys %thash ;  # その列で1回以上出現した具体的なデータ値を可能。
+        my @skeys = splice @{[ sort{ $thash{$b}<=>$thash{$a} } @vals ]} , 0, $o{n} ;
+        
+        print $_ + 1 . "\t" ;  ## (1) 列番号の表示1から
+        print GREEN BOLD scalar @vals , "\t" ;## (2) 何通りの値が出現したかを表示
+        print BRIGHT_BLUE & aveft( \%thash , \@vals ) , "\t"  if ( ! $o{m} ) ;  ## (3) 平均値の表示
+        print BRIGHT_YELLOW $colnames[$_]//($_+1), "\t" ; ## (4) 列の名前(列名)を表示
+        print BRIGHT_WHITE join ', ', & minmaxstr ( \@vals ) ;  ## (5) 値の最大と最小を取り出す。
+        print "\t" ; 
+        print join ', ' , @skeys ; ## (6)  具体的な値の表示 (出現度数の多い順に $o{n} 個 ) 
+        my %cct; $cct{$_}++  for( values %thash ); # 度数のそのまた度数を格納するための変数
+        my @kcct =  sort {$b<=>$a} keys %cct   ;
+
+        print "\t" ;
+        print GREEN join ', ' , MultSpec ( \@kcct, \%cct)  ;  ## (7) テール度数の分布
+        my @kc2 = splice @kcct , -min(  $o{n} ,$#kcct+1 ) ; # <- tricky! 
+        print GREEN (@kcct? '..' : @kc2? ', ' : '' ) ;  ## (7) 中点をどうするか
+        print GREEN join ', ' , MultSpec ( \@kc2, \%cct)  ;  ## (7) テール度数の分布
+        print "\n" ;
+    }
+}
+## 汎用化可能な関数
+
+sub RangeStr ($$) {
+    return $_[0] eq $_[1] ? "$_[0]" : "$_[0]..$_[1]" ; # 2個の数or文字列から 1..2のような文字列を生成
+}
+sub minmaxstr {
+    my @gps = part { $_ eq q// ? 0 : looks_like_number $_ ? 1 : 2 } @{$_[0]} ; 
+    my @ostr ; 
+    push @ostr, '' if $gps[0] ;  # 空文字列があるときの処理  
+    push @ostr, &RangeStr( min(@{$gps[1]}), max(@{$gps[1]}) ) if $gps[1] ;  # 数に見える値があるときの処理 
+    push @ostr, &RangeStr( minstr(@{$gps[2]}), maxstr(@{$gps[2]}) ) if $gps[2] ; # 数に見えない値があるときの処理 
+    return @ostr; 
+} ; 
+
+# 度数(頻出上位の個数及びテールの様子) について表示文字列を準備する(..の前後で2回呼び出される)
+sub  MultSpec  {
+    my ($p_kc,$p_ccount)  =  @_;
+    my @ostr ;
+    my $c=0 ; 
+    while ( my $t  = shift @$p_kc )  { 
+        $c++ ; 
+        push @ostr , $t if ( $p_ccount->{$t} == 1 ) ; 
+        push @ostr , $t.'(x'.$p_ccount->{$t} .')' if ( $p_ccount->{$t} >= 2 ) ; 
+        last if ( $c >= $o{n} ) ;
+    } 
+    return @ostr ;
+} ;
+
+# 平均値を計算する処理をする。
+sub aveft{
+    my ($rHash,$rKeys)=@_ ;
+    my ($tval, $freq, $asum, $afreq ) ; 
+    for( @{$rKeys} ) { 
+        ( my $num = $_ ) =~ s/(\d),/$1/g ; #s/,//g ; # 3桁区切りに現れる区切りコンマを消去する
+        $tval = POSIX::strtod ( $num ) ; 
+        $freq = $rHash->{ $_ }  ; 
+        $asum += $tval * $freq ; 
+        $afreq += $freq ; 
+    }
+   return sprintf '%5.3f',$asum/$afreq;
+    #return "$asum / $afreq " ;
+    
+}
+
+# --helpに応対する処理
+sub VERSION_MESSAGE{ 
+    $0 =~ s/.*\///g ; 
+    while ( <DATA> ) { 
+        print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 ;
+}
+
+__END__
+
+=encoding utf8
+
+=head1 colsummary.pl 
+
+ データファイル(TSV形式、一行目はヘッダ)について、各列の有用な情報を出力する。
+
+[出力項目]
+
+ 1. 列番号
+ 2. 異なり数(各列に異なる値が何個出現したか)
+ 3. 平均値
+ 4. 列名 (ヘッダから取り出す)
+ 5. 値の範囲
+ 6. 値の頻出ランキング
+ 7. 頻出上位と下位についての出現回数
+[オプション]
+　
+       -=   ヘッダが存在する場合は必ず指定すること。そうではない場合は、列名は連番になる。
+       -n 6   具体的な値を何個表示させるか指定する。
+       -m   平均値を表示しない。(平均値は strtod を使っている。) 
+   
+          
+=cut
