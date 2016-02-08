@@ -1,0 +1,13 @@
+#!/usr/bin/perl
+
+use 5.011 ; use strict ; use warnings ; 
+
+my @eachstr ; 
+
+while ( <> ) { 
+    my @nums = m/(\d+)/g ; 
+    push @eachstr , "c(" . join( ", " , @nums ) . ")" ;
+}
+
+my $outstr = "rbind ( " . join( ",", @eachstr ) . ")" ; 
+print $outstr , "\n" ;
