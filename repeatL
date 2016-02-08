@@ -1,6 +1,10 @@
 #!/usr/bin/perl
 use 5.014 ; use strict ; use warnings ;
-use Getopt::Std ; getopts "n:w:" , \my%o ;
+use Getopt::Std ; getopts "mn:w:" , \my%o ;
+
+&repeatEachLines if ($o{m}) ;
+
+
 $o{n} //= 2 ;
 $o{w} //= 2 ; 
 undef $/ ; 
@@ -18,11 +22,22 @@ for ( 1 .. $o{n} ) {
 }
 
 
+sub repeatEachLines { 
+    while ( <> ) { 
+        chomp ; 
+        my @fld = split /\t/,$_,2 ; 
+        print $fld[1],"\n" for 1 .. $fld[0] ; 
+    }
+    exit 0 ;
+}
+
+
+
 sub VERSION_MESSAGE { 
     while ( <DATA> ) { 
         print $_ if s/^=head1$// .. s/^=cut$// ; 
     }
-    exit 0 
+    exit 0 ;  
 }
 
 __END__ 
@@ -35,6 +50,9 @@ __END__
     -w で指定された回数ほど横方向に繰り返し、
     -n で指定された回数ほど縦方向に繰り返して
     出力する。
+
+    ただし、
+    -m  とすると、各行の先頭の列は回数とみなされ、残りの部分が回数だけ繰り返して出力される。
 
     考えられる用途としては、他のコマンドの動作のテストや、
     計算性能のテストである。
