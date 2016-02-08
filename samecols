@@ -1,0 +1,93 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts "eEC=." , \my%o ; 
+use feature qw/say/ ; 
+
+use Term::ANSIColor qw/:constants color/;$Term::ANSIColor::AUTORESET = 1 ;
+if (  $o{C} ){
+    *CYAN=sub{$_[0]};
+    *YELLOW=sub{$_[0]};
+    *GREEN=sub{$_[0]};
+    *WHITE=sub{$_[0]};
+}
+
+my ($header, @header ) ; 
+if ( $o{q/=/} ) {
+  $header = <> ;
+  chomp $header ;  
+  @header = split /\t/, $header , -1 ; 
+}
+
+my $intflg =  0  ; 
+$SIG{INT} = sub { $intflg = 1 } ;
+
+my @ss = undef ; # 2次元配列にする。$ss[$i][$j] で 入力の $i+1 列目 と $j+1列目 の値が等しい行数を表す。
+my $totallines = 0 ; # 処理対象の行数 
+
+# メインのルーチン部分
+while ( <> ) { 
+    chomp ; 
+    my @flds = split /\t/ , $_ , -1 ;  # <- ちゃんと最大長までとりだすために-1を指定。
+        for my $i ( 0 .. $#flds ) {
+            for my $j ( $i .. $#flds ) {
+                next if $o{e} && $flds[$i].$flds[$j]eq'' || $o{E} && ( $flds[$i]eq''||$flds[$j]eq'')  ;
+                if ( $flds[ $i ] eq $flds[ $j ] ) {
+                    $ss [ $i ][ $j ] ++ }
+                elsif ( $i != $j ) { 
+                    $ss [ $j ][ $i ] ++ 
+                }
+            }
+        }    
+    $totallines ++ ; 
+}
+
+
+# 作った正方行列を出力する。
+
+print GREEN "=" ; 
+for ( 1 .. $#ss+1 ) { print "\t" , GREEN $_ } ; 
+print "\n" ;
+for my $i ( 0 .. $#ss ) {
+   print GREEN $i+1 ; # 列番号を緑色で表示 
+   for ( 0 .. $i-1 ) { print "\t", YELLOW $ss[$i][$_]//0 } ; 
+   for ( $i .. $#ss ) { print "\t", WHITE $ss[$i][$_]//0 } ; 
+   print GREEN "\t" . $header[ $i ] if defined $o{'='} ;  # 出力の 最も左の列の表
+   print "\n" ; 
+}
+
+print CYAN "Counted lines: $totallines\n" ; 
+exit ; 
+
+
+sub VERSION_MESSAGE {
+    $0 =~ s/.*\/// ; 
+    while ( <DATA> ) {
+       s/\$0/$0/g; 
+       print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 ;
+}
+
+__END__ 
+=encoding utf8 
+
+=head1 $0 
+
+  tsvファイルを読取り、次のように正方行列を出力する。
+  正方行列のi行j列目の要素は、入力行のi列目とj列目を比較したときに、
+  i <= j 場合 等しい行数数、i>jの場合は異なる行数となる。 
+   右上は、等しい行の数、左下は異なる行の数、と考えるとよい。 
+
+ [オプション] 
+
+  -e 両方の列が共に空文字列の場合は比較の対象外とする。
+  -E どちらかでも片方の列が空文字列の場合は比較の対象外とする。
+  -C 表示に色を付けない。
+  -. 正方行列の左下半分の各要素は、数では無くてピリオドを表示する。
+  -= 最初の入力行をヘッダと見なす。
+
+ [ヒント]
+
+  このコマンドの後に、パイプに続けて、 column -t をつなぐことが望ましい 
+
+=cut
