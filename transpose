@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+
+use 5.011 ; use strict ; use warnings ; 
+my @mat ; 
+my $maxind = 0 ; 
+
+while (<>) { 
+    chomp ; 
+    my @F = split /\t/ , $_ , -1 ; 
+    @{ $mat[ $. - 1 ] } = @F  ;
+    $maxind = $#F if $#F > $maxind  ;
+}
+
+for my $i ( 0 .. $maxind ) { 
+    my @each  ;
+    push @each ,  $mat[ $_ ][ $i ] for ( 0 .. $#mat ) ; # 早い 
+    #@each = map { $mat[ $_ ][ $i ] } 0 .. $#mat ; # 少し遅い
+     
+    print join ( "\t" , @each ) , "\n" ; 
+}
