@@ -1,0 +1,53 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts '=,ivx' , \my%o ; 
+use List::Util qw/sum0/ ; 
+use List::MoreUtils qw/pairwise/ ; 
+
+my ( @rowSum , @colSum  ) ;
+my $outstr ; 
+if ( $o{'='} ) { my $tmp = <> ; $outstr.= $tmp if $o{v} } 
+
+while ( <> ) {
+    chomp ; 
+    my @F = split /\t/ , $_ , -1 ; 
+    shift @F if $o{','} ;
+    my $rsum = sum0 @F ; 
+    $outstr.= $_ . "\t" . $rsum . "\n" if $o{v} ;
+    push @rowSum , $rsum ; 
+    @colSum = pairwise { ($a//0)+($b//0) } @colSum , @F ; 
+}
+
+$outstr.= "\t" if $o{','} ; 
+$outstr.= join ( "\t" , @colSum , sum0 @colSum ) . "\n" if $o{v}  ;
+$outstr.= join ( "\t" , @colSum ) . "\n" if  $o{x} ;
+$outstr.= "\n" . join ( "\t" , @rowSum ) . "\n" if $o{i} ; 
+
+print $outstr ;
+
+
+__END__
+
+=encoding utf8
+
+=head1 [機能と用途]
+
+=head2 クロス表に対して、周辺和(列和と行和)を付加して表示
+
+=head2
+
+=head1 [オプション]
+
+=head2
+
+=head2 -i 行和(横方向の和)を最後に表示
+
+=head2 -x 列和(縦方向の和)を表示
+
+=head2 -v 入力もそのまま、行和と列和も付属して表示。
+
+=head2 -= 先頭行をただのラベルと見なす。
+
+=head2 -, 1列目をただのラベルと見なし、集計の対象としない。
+
+=cut
