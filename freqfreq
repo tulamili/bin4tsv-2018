@@ -1,0 +1,25 @@
+#!/usr/bin/perl
+use 5.010 ; use strict ; use warnings ; # confirmed alfready 5.018 
+use Getopt::Std ; getopts "=" , \my%o ; 
+
+my ( %freq , %freqfreq )  ; 
+print my $head = <> if $o{'='}  ;
+while ( <> ) { $freq { $_ } ++ } ; 
+for ( values %freq ) { $freqfreq { $_ } ++ } ;
+for ( sort {$a<=>$b} keys %freqfreq ) { print "$_\t$freqfreq{$_}\n" }  ; 
+
+exit 0 ; 
+__END__ 
+
+=encoding utf8 
+
+=head1
+
+    $0 
+    同じ行の値が何回出現したかの、その出現回数の分布について、出力する。
+
+オプション
+
+    -=  : このオプションにより、先頭行はヘッダと見なして、そのまま出力する。
+
+=cut 
