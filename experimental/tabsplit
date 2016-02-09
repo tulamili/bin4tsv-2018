@@ -1,0 +1,64 @@
+#!/usr/bin/perl
+use 5.014 ; 
+use strict ;
+use warnings ; 
+use Getopt::Std ; 
+getopts "n:" ; 
+use List::MoreUtils qw/pairwise/ ;
+
+my $infile=$ARGV[0] or die "No File name is given to input." ; 
+
+open my $ifh , "<" , $infile ; 
+
+my (@ofh ) ; 
+my $cols = 0 ;
+
+while (<$ifh>) {
+    chomp ; 
+    my @flds = split /\t/ , $_ , -1  ; 
+
+    if ($.==1) { 
+	for (@flds){ 
+	    $cols++ ; 
+	    open my $ofh , ">" , "$infile.$cols" or die $! ; 
+	    push @ofh , $ofh ; 
+	}
+    } ; 
+    pairwise { ($a,$b)=($a,$b) ; print {$a} "$b\n" }  @ofh , @flds  ;
+}
+
+close $ifh  ; 
+grep { close $_ }  @ofh  ;
+
+sub VERSION_MESSAGE { 
+   while ( <DATA> ) {
+      print $_ if s/^=head1// .. s/^=cut// ; 
+   }
+   exit 0 ;  
+}
+
+__END__ 
+=encoding utf8
+
+=head1 
+
+[コマンド]
+
+  tabsplit.pl 入力ファイル名
+
+[動作]
+  入力ファイル file をタブ区切りのtsvファイルであると見なし、
+  第n列の値を先頭行から最終行まで、file.n のようなファイル名で
+  保存する。
+
+  入力ファイルの列の数は一定とみなしている。生成されるファイルの
+  数は、列の数に一致する。200列程度であれば、動作することは
+  確認している。
+
+[注意点]
+  何列まで動作するかのテストはしていない。
+  また、いろいろな状況下でのテストはしていない。
+
+  
+
+=cut

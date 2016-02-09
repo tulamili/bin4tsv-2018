@@ -1,0 +1,47 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings ; use feature qw/say/ ; 
+use Getopt::Std ; getopts "s:" , \my%o ; 
+#use File::Handle ; 
+use IPC::Open2 ; 
+my $pid = open2 ( *Reader , *Writer , join " " , @ARGV ) ; 
+
+$o{s} //= 1 ; 
+
+while ( <STDIN> ) { last if $. > $o{s}  ; print $_ ; }
+do { print Writer $_ } while ( <STDIN> ) ;
+close *Writer ; 
+
+while ( <Reader> ) { print $_ ; }
+close *Reader ; 
+
+exit 0 ;
+
+sub VERSION_MESSAGE {} 
+
+sub HELP_MESSAGE { 
+    $0 =~ s/.*\/// ; 
+    while ( <DATA> ) {
+        s/\$0/$0/g ; 
+        print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 ;
+}
+
+
+__END__
+
+=encoding utf8 
+
+=head1
+
+   cat somefile | $0 -s 3 somecommand 
+
+   $0 -s 1 sort -nk3  < somefile 
+
+   -s で指定された行はそのまま表示して、
+   残りを、引数で指定されたコマンドに渡す.
+
+
+
+
+=cut

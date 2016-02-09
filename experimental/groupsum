@@ -1,0 +1,33 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings ; 
+use List::Util qw/sum sum0/ ; 
+use List::MoreUtils qw/natatime/ ;
+use Getopt::Std ; getopts "n:a:" , \my%o ;
+
+$o{n} //= 1 ;
+
+
+undef $/ ; 
+my $input = <>  ; 
+my @nums = $input =~ m/(\d+)/g ; 
+
+my @sums ; 
+
+push @sums , sum splice @nums, 0,$o{a}  if $o{a} ; 
+my $it = natatime $o{n} , @nums ; 
+while ( my @vals = $it -> () ) { 
+    push @sums, sum @vals 
+}
+print join ", " , @sums; 
+
+print "\n" ;
+
+=encoding utf8 
+
+=head1  groupsum.pl
+
+=head2
+
+=head2  数字が来たら、指定された個数(-n)ごとに足し合わせる。
+
+=head2 -a num の指定により、-a で指定された個数は最初に足しあわされる。

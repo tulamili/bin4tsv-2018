@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts "=",\my%o ;  
+undef $/ ; 
+my @lines = split /\n/, <STDIN> , -1 ;
+
+for my $keystr ( @ARGV ) { 
+    for ( @lines ) {
+        print $_ . "\n" if index ($_, $keystr) != -1;  
+    }
+}
+
+exit 0 ; 
+
+sub VERSION_MESSAGE {
+    $0 =~ s/.*\/// ; 
+    while ( <DATA> ) {
+        s/\$0/$0/g ; 
+        print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 ; 
+}
+
+
+
+__END__ 
+
+=encoding utf8 
+
+=head1 
+
+  $0 
+
+使い方 :  cat datafile | $0 str1 str2 str3 .. 
+
+動作 : 
+
+  標準入力に与えられたものを一旦全部読取り、
+  引数に与えられたそれぞれの文字列を含む行を順に表示する。
+
+  いくつかのキーを grep しながら追跡するが、それぞれにキーを分けて追跡したい時に使う。
+
+
+=cut 

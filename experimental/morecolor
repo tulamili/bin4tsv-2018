@@ -1,0 +1,63 @@
+#!/usr/bin/perl
+use 5.013 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts "k:" , \my%o ; 
+use List::MoreUtils qw/pairwise/ ;
+use Term::ANSIColor qw/:constants color/ ; $Term::ANSIColor::AUTORESET = 1 ;
+
+my $prevLine ; 
+my @prevFld ; 
+
+
+my $intflg ; $SIG{INT} = sub { $intflg = 1 } ;
+while ( <> ) {
+    chomp ; 
+    my @fld = split /\t/ , $_ , -1 ; 
+    @prevFld = @fld if $. == 1 ;
+    
+    my @gl = eval { no warnings ;  pairwise {  $a cmp $b   }  @fld , @prevFld }  ; 
+    my @out ; 
+    for ( 0 .. $#fld ) { 
+        push @out , color ( ["cyan","white","bright_green"]->[$gl[$_]+1] ) . $fld[$_] ;
+    }
+    #print join (" " , @gl ) , "\n" ; 
+    print join ( "\t" , @out ), color("reset") , "\n" ;
+    $prevLine = $_  ;
+    @prevFld = @fld ; 
+    last if $intflg ; 
+}
+$0 =~ s/.*\/// ; 
+print color("on_blue") . "$. lines proccessed ($0).\n" ;
+print color("reset") ; 
+
+
+sub VERSION_MESSAGE {} 
+
+sub HELP_MESSAGE { 
+    $0 =~ s/.*\/// ; 
+    while ( <DATA> ) { 
+        s/\$0/$0/g ;
+        print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 ;
+} 
+
+__END__ 
+
+
+
+=encoding utf8 
+
+=head1 
+
+ $0 
+
+ 各列について、全行の同じ位置の列と比較した、文字列の大小関係に従って、
+ 文字に着色をする。
+
+
+ なお、当初は、年月の月の、季節ごとに、シアン、グリーン、ブライトレッド、イエロー
+  の色もつける予定であった。
+
+
+=cut
+

@@ -1,0 +1,71 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings; 
+use Getopt::Std ; getopts "i:k:I=" , \my%o ;  
+
+$o{i} //= 2 ; # 指定が無ければ、2行以上続いたら、出力しよう。
+$o{k} //= 1 ;
+
+print my $head = <> if $o{'='}  ;
+my ( $inarow , @out , $prevLine, @prevFld ) ; 
+while ( <> ) { 
+    chomp ;
+    my @fld = split /\t/, $_ , -1 ; 
+    
+    if ( $fld[ $o{k} -1 ] eq ( $prevFld[ $o{k} -1 ] // '' ) ) { 
+        push @out , $_  ;
+        $inarow ++ ;
+    } else { 
+        &procOut ( @out )  ; 
+        @out = ( $_ ) ; 
+        $inarow = 1 ;
+    }
+    $prevLine = $_ ;
+    @prevFld = @fld ;
+    #print "\$inarow=$inarow\n" ;
+}
+
+&procOut ( @out ) ; 
+
+
+sub procOut { 
+    #print "scalar \@out = " , scalar @out , "\n" ;
+    return if scalar @out < $o{i} ; 
+    print join ("\n", @out) , "\n" ;
+    print "\n" if $o{I} ; 
+}
+
+sub VERSION_MESSAGE {} 
+
+sub HELP_MESSAGE{
+    $0 =~ s/.*\/// ; 
+    while( <DATA> ){
+        s/\$0/$0/g; 
+        print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 ;
+}
+
+
+__END__ 
+
+
+=encoding utf8
+
+=head1
+
+$0 
+
+ -i num で数を指定して、先頭列がnum個以上続いた行だけを表示する。
+ -k num で 1始まりの num列目の値が変わったかどうかに着目するようにする。
+ -I で、グループ間に、見やすいように空文字列行を挿入する。
+ -= は先頭の行はそのまま出力して、処理の対象とはしない。
+
+
+その他: 
+  -k num では合計1列しか指定できないが、複数の列を指定できるようにしたい。
+   また、単純に全列を指定できるようにしたい。
+
+=cut
+
+
+
