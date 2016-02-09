@@ -1,19 +1,31 @@
 #!/usr/bin/perl 
 use 5.010 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts 'tu=' , \my%o ;
+use Getopt::Std ; getopts 'lLtu=' , \my%o ;
 use Encode qw/decode_utf8/ ; 
-print (my $tmp=<>) if $o{'='} ; 
 
-while ( <> ) {
-    chomp ; 
-    my @fld = split /\t/, $_ , -1 ; 
-    @fld = map { decode_utf8 $_ } @fld if $o{u};
-    @fld = map { length  } @fld ; 
-    @fld = ( scalar @fld ) if $o{t}  ; 
-    print join ("\t", @fld ) , "\n" ; 
+print (my $tmp=<>) if $o{'='} ; 
+$o{l} || $o{L} ?  &procEachWholeLine : &procAsTSV ; 
+exit 0 ; 
+
+# Functions 
+
+sub procEachWholeLine { 
+    while (  <>  ) { 
+        chomp if $o{l}  ; 
+        $_ = decode_utf8 $_ if $o{u}  ;
+        print length ( $_ ) , "\n" ; 
+    }
 }
 
-exit 0 ; 
+sub procAsTSV {
+    while ( <> ) {
+        chomp ;
+        $_ = decode_utf8 $_  if $o{u} ; 
+        my @fld = split /\t/, $_ , -1 ; 
+        @fld = $o{t} ? ( scalar @fld )  : map { length  } @fld ; 
+        print join ("\t", @fld ) , "\n" ; 
+    }
+}
 
 sub VERSION_MESSAGE { 
 }
@@ -42,8 +54,10 @@ __END__
   -=   :  一行目を(ヘッダと見なして)そのまま出力する。
   -u   :  utf-8 とみなして、長さを計算する。そうでなければ、単純なバイト長になる。
   -t   :  単純に各行の、タブの数を数える。
-
+  -l   :  各行の長さを算出する。行末の改行文字を含めない。-t は無効化される。
+  -L   :  各行の長さを算出する。行末の改行文字も含める。 -t は無効化される。
 ヒント: 
+
 
   $0 -= some.tsv | colsummary.pl -= とすると、長さの分布が得られる。
 
