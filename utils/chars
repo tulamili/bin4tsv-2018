@@ -1,0 +1,63 @@
+#!/usr/bin/perl
+use 5.011 ; use strict; use warnings; 
+use Getopt::Std ; getopts "0n" , \my%o ; 
+
+use utf8 ; 
+use Encode ; 
+my $utf8 = Encode::find_encoding('utf8') ;
+binmode STDOUT , ":utf8" ; 
+
+
+&CountChars if $o{n} ; 
+&OneLineOneChar ; 
+exit(0) ; 
+
+
+# 以下は関数たち
+
+sub CountChars {
+    my ( %chars , $totallines ); 
+    while( <> ) { 
+        my @chars = &chars ( $_ ) ; 
+        $chars{ $_ } ++ for @chars ; 
+        $totallines ++ ; 
+    }
+    for( sort {$chars{$b}<=>$chars{$a}} keys %chars ) { 
+        print $chars{ $_ } , "\t" , $_ , "\n" ; 
+    }
+ 
+    use Term::ANSIColor ; 
+    print STDERR color('cyan'), "Lines: " , $totallines , color('reset'), "\n" ; 
+}
+
+sub OneLineOneChar {
+    while( <> ){
+        my @chars = &chars ( $_ ) ; 
+        print join "\n" , @chars ;
+    }
+}
+
+sub chars ($_) { 
+    chomp $_[0] ; 
+    return split // , $utf8 -> decode ( $_[0] ) , -1 ; 
+}
+
+__END__ 
+
+=encoding utf8 
+
+=head1 chars.pl
+
+=head3 (utf8とみなして) 入力データをひとつひとつの文字にばらす。
+
+=head2 [オプション]
+
+=item * -n 文字数を数える。 
+
+=head2 [用途]
+
+=item * 頻出する文字を知る。
+
+=item *  よく似た2行がどこに違いがあるのか見つけたいときに、sdiff で並べる操作の前に使う。
+
+=cut
