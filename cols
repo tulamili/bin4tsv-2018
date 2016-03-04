@@ -1,0 +1,134 @@
+#!/usr/bin/perl
+use 5.011 ; use strict ; use warnings ;
+use Getopt::Std ; getopts "d:e:h:np:rt:,:" , \my %o ;
+use List::MoreUtils qw/any none/ ;
+use Encode qw/decode_utf8/ ;
+
+my %O ; # 列の番号の配列を格納する。
+ # @{$O{p}} 出力するよう指定した列の番号
+ # @{$O{d}} 削除するよう指定した列の番号
+ # @{$O{h}} 先頭に移動するように指定した列の番号
+ # @{$0{t}} 末尾に移動するように指定した列の番号
+my @showingCols ; # 列の数が異なると、表示すべき列が異なるので、配列で保管して高速化。
+#@{$showingCols[0]} = () ;
+my $emp ; # 存在しないセルを参照したときに表示する文字列
+&choreOptions ; # オプションについての処理
+&printColsMain ;  # メインの処理
+exit 0 ;
+
+sub printColsMain {
+	binmode STDOUT ,":utf8" if $o{','} eq ''  ;
+	my $sep = $o{','} ; # 入力の区切り子
+	my $slim = $sep eq '' ? 0 : -1 ; # split で使う。split//はLIMIT=0にする必要があるため。
+	my $osep = $sep eq '' && $o{n} ? " " : $sep ; # 出力の区切り子
+	while ( <> ) {
+		chomp ;
+		$_ = decode_utf8 ( $_ ) if ( $o{','} eq '' ) ;
+		my @F = split /$sep/ , $_ , $slim   ; #use Data::Dumper ; print scalar @F , Dumper [@F];
+		@F = map { ($_+1).":$F[$_]" } 0..$#F  if $o{n} ;   # -n で列番号をコロンを付けて出力
+    	unshift @F , $emp ;
+    	#use Data::Dumper ; print Dumper scalar @F ,  &showingCols ( $#F ) ;
+		print join ( "$osep" , @F [ @{ &showingCols(  $#F ) } ] ) , "\n" ;
+	}
+}
+
+sub showingCols ($) {
+	return $showingCols[ $_[0] ] if defined $showingCols[ $_[0] ] ;
+	my $width = $_[0] ;
+	my @res ; #
+	@{$O{p}} = 0 .. $width -1 if ! defined $o{p} ;
+	my @p_ = @{$O{p}} ; my @d_ = @{$O{d}} ; my @h_ = @{$O{h}} ; my @t_ = @{$O{t}} ;
+#	grep { $_ = !$o{r} && abs ($_ )>= $width ? 0 : $_+1 } @p_, @d_, @h_ ,@t_ ; # -r指定で単純にサイクリックとなる
+	grep { $_ = !$o{r} && abs ($_ )>= $width || $width == 0 ? 0 : 1 + ($_ % $width) } @p_, @d_, @h_ ,@t_ ; # -r指定で単純にサイクリックとなる
+#	grep { $_ = 0 if abs $_ > $width } @p_, @d_, @h_ ,@t_ if ! $o{r} ;
+	@p_ = &elementDrop ( \@p_ , @d_ , @h_ , @t_ ) ;
+	@h_ = &elementDrop ( \@h_ , @d_ ) ;  # -h,-tで指定された列でも、-dで指定されたものは消す。。
+	@t_ = &elementDrop ( \@t_ , @d_ ) ;  #
+	return $showingCols [ $width ] = [ @h_ ,@p_ , @t_ ] ;
+}
+
+sub elementDrop ($@) { my$o = shift @_ ; return grep { my$x=$_;none{$x==$_} @_ } @{$o} } ;
+
+# コマンド引数のオプションについての処理 ; 2個の関数
+sub choreOptions {
+    $o{','} //= "\t" ;
+    if ( ! scalar grep { defined }  @o{qw/p d h t n/} ) { *STDOUT= *STDERR ; &HELP_MESSAGE ; exit  }
+    @{ $O{ $_ } } = &procOptNums ( $o{$_} ) for qw/p d h t/ ;
+    $emp = $o{e} // "undef" ;
+}
+
+sub procOptNums ($) { # まず コンマで分割, # 次に .. を展開する。 # 最後に正の数は 1を引く。
+	return () if ! defined $_[0] ;
+	my @g = split /,/,$_[0]  ;
+	my $l = scalar @g ;
+	for ( 1 .. $l ) {
+		if ( $g[ $l - $_ ] =~ m|(.+)\.\.(.+)| ) {  # *末尾* から数字を展開する。
+			splice  @g , $l-$_ , 1 ,  ($1<=$2 ? $1 .. $2 :reverse $2 .. $1 ) ;
+		}
+	}
+	@g = grep { $_ != 0 } @g ; # 0は取り除く。$0 が -ptdhの引数に0を与えるのは、ヘルプの抑制が主目的となる。
+    for ( 0 .. $#g ) {	$g[$_] -- if $g[$_] > 0 }   ; # 1始まりで与えられた列番号を0始まりにする。ただし、負の数は変えない。
+
+	return @g ;
+}
+
+# ヘルプの表示
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+	$0 =~ s/.*\/// ;
+	while ( <DATA> ) {
+		s/\$0/$0/g ;
+		print $_ if s/^=head1// .. s/^=cut// ;
+	}
+	exit 0 ;
+}
+
+__END__
+
+=encoding utf8
+
+=head1
+
+プログラム :
+
+    $0
+
+概要:
+
+  TSVファイル等の指定された列を表示する。
+   -p で表示する列を指定する。
+   -d で表示しない列を指定する。
+   -h で先頭(各行の左部分に表示する列を指定する。
+   -t で末尾(各行の右部分に表示する列を指定する。
+
+  列番号を負の数で指定すると、末尾から数える。
+  範囲を指定することもできる。たとえば、-p 2..5  とすると、
+  2列目から5列目のみ表示する。 5..2 とすると、逆順になる。
+  列番号は1始まりである。
+
+   -e : 存在しないセルを指定したときに表示する文字列
+   -r : 存在しないセルを指定したときは、その時の入力行が
+        横に無限に周期的につながっていると仮定して、指定位置を取り出す。
+
+引数の例:
+
+	$0 -p 5..9,2 -d 6..8 ; # 5列目から9列目の後に2列目を表示するが、ただし6-8列目は省く。
+	$0 -p -1  ; # 最後から1列目のみを表示
+
+その他のオプション:
+
+    -, separater
+          別の区切り子の指定。 $0 -,, とするとコンマ区切り。 $0 -," " すると空白文字区切り
+    -, "" もしくは -, ''
+          入力を1文字単位で区切って処理する。(-, と ''または""の間は1個以上の空白が必要)
+          固定長の時に便利。
+
+    -n  : 列に番号を付与する。
+
+このプログラムに求められる要件:
+
+    - 十分高速に動作すること。gawk と同じ程度が目標だった。cut よりは高速にしたかった。。
+    - cutより早くするのが厳しければ、 同じファイルを Unix コマンドsort の半分程度であること。
+    - $0 -p -1 できちんと最後の列を表示すること。
+    - 列数が行毎に異なる入力データでも、きちんと動作すること。
+=cut
