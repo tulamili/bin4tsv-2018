@@ -1,53 +1,70 @@
 #!/usr/bin/perl
-use 5.011 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts '=,ivx' , \my%o ; 
-use List::Util qw/sum0/ ; 
-use List::MoreUtils qw/pairwise/ ; 
+use 5.010 ; use strict ; use warnings ; # 5.001, 5.010, 5.014 で動作確認済み
+use Getopt::Std ; getopts '=1ex!' , \my%o ;
+use List::Util qw/sum0/ ;
+use List::MoreUtils qw/pairwise/ ;
 
 my ( @rowSum , @colSum  ) ;
-my $outstr ; 
-if ( $o{'='} ) { my $tmp = <> ; $outstr.= $tmp if $o{v} } 
+my $outstr ;
 
-while ( <> ) {
-    chomp ; 
-    my @F = split /\t/ , $_ , -1 ; 
-    shift @F if $o{','} ;
-    my $rsum = sum0 @F ; 
-    $outstr.= $_ . "\t" . $rsum . "\n" if $o{v} ;
-    push @rowSum , $rsum ; 
-    @colSum = pairwise { ($a//0)+($b//0) } @colSum , @F ; 
+&coreProc ; # 読み取り部分 (-v指定があれば、出力も伴う。)
+&postProc ; # 集計結果の出力
+exit 0 ;
+
+sub coreProc {
+	if ( $o{'='} ) {
+		my $tmp = <> ;
+		$outstr.= $tmp if $o{x} ;
+		push @rowSum , '' ;
+		 }
+	while ( <> ) {
+	    chomp ;
+	    my @F = split /\t/ , $_ , -1 ;
+	    shift @F if $o{'1'} ;
+	    my $rsum = sum0 grep { $_ } @F ; # 各行の行和
+	    $outstr.= $_ . "\t" . $rsum . "\n" if $o{x} ; # 入力も出力する場合の処理
+	    push @rowSum , $rsum ;
+	    @colSum = pairwise { ($a||0)+($b||0) } @colSum , @F ;
+	}
 }
 
-$outstr.= "\t" if $o{','} ; 
-$outstr.= join ( "\t" , @colSum , sum0 @colSum ) . "\n" if $o{v}  ;
-$outstr.= join ( "\t" , @colSum ) . "\n" if  $o{x} ;
-$outstr.= "\n" . join ( "\t" , @rowSum ) . "\n" if $o{i} ; 
+sub postProc {
+	$outstr.= "\t" if $o{'1'} ; ## ??
+	$outstr.= join ( "\t" , @colSum , sum0 @colSum ) . "\n" if $o{x}  ;
+	$outstr.= join ( "\t" , @colSum ) . "\n" if $o{'!'} ; # 列和(縦方向の和)
+	$outstr.= join ( "\n" , @rowSum ) . "\n" if $o{ e } ; # 行和(横方向の和)
+	print $outstr//'' ;
+}
 
-print $outstr ;
-
+sub VERSION_MESSAGE{}
+sub HELP_MESSAGE{$0=~s|.*/||; while(<DATA>){s/\$0/$0/g;print $_ if s/^=head1//..s/^=cut//} exit 0}
 
 __END__
 
 =encoding utf8
 
-=head1 [機能と用途]
+=head1
 
-=head2 クロス表に対して、周辺和(列和と行和)を付加して表示
+  $0 [-!] [-e] [-x]
 
-=head2
 
-=head1 [オプション]
+ [機能/用途]
 
-=head2
+   クロス表に対して、周辺和(列和と行和)を付加して表示。
 
-=head2 -i 行和(横方向の和)を最後に表示
+ [オプション]
 
-=head2 -x 列和(縦方向の和)を表示
+   -! 列和(縦方向の和)を表示
+   -e 行和(横方向の和)を最後に表示
+   -x 入力もそのまま、行和と列和も付属して表示。
 
-=head2 -v 入力もそのまま、行和と列和も付属して表示。
+   -= 先頭行をただのラベルと見なす。
+   -1 1列目をただのラベルと見なし、集計の対象としない。
 
-=head2 -= 先頭行をただのラベルと見なす。
+ [検証用スクリプト]
 
-=head2 -, 1列目をただのラベルと見なし、集計の対象としない。
+  paste <( seq 1 5 ) <( seq 21 25 ) <( seq 31 35 ) | $0 -=1x
+  paste <( seq 1 5 ) <( seq 1 5 ) <( seq 1 5 ) | $0  -=1x
+
 
 =cut
