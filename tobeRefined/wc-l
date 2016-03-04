@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+use 5.014 ; use strict ; use warnings ;
+use Getopt::Std ; getopts '1' , \my%o ;
+
+$| = 1 ;
+$0 =~ s|.*/|| ;
+
+&mainProc ;
+exit 0 ;
+
+sub mainProc {
+    $SIG{INT} = \&sigint ;
+    my $count = 0 ;
+    if ( $o{1} ) {
+        while ( <> ) { $count ++ ; print $_ }
+    } else {
+        while ( <> ) { $count ++ }
+    }
+    print "$count\n" ;
+}
+
+sub sigint {
+    alarm 0 ;
+    print &dtfmt ,"  Processing $.-th line. ","\n" ;
+    sleep 1 ;
+    $SIG{INT} = sub { die &dtfmt , "  `$0' stopped because of double `Ctrl-C' signals within 5 seconds.\n" } ;
+    alarm 4 ;
+    $SIG{ALRM} = sub { $SIG{INT} = \&sigint } ;
+}
+
+sub dtfmt {
+    my @f = @{[localtime]}[5,4,3,2,1,0] ;
+    $f[0] += 1900 ;
+    $f[1] += 1 ;
+    return sprintf ( "%04u-%02u-%02u %02u:%02u:%02u" , @f ) ;
+}
+
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE{ $0=~s|.*/|| ; while(<DATA>){s/\$0/$0/g;print $_ if s/^=head1//..s/^=cut//} exit 0 }
+
+__END__
+
+=encoding utf8
+
+=head1
+
+  $0
+
+  Unix の  wc -l の代替。行数を出力する。
+
+  なお、Ctrl+C が押下された場合、途中の状態を表示して、元に戻る。
+  5秒以内に再び、Ctrl+C が押下された場合のみ、プログラムは
+  停止する。
+
+ オプション:
+    -1 : 最後に行数を出力するが、入力もそのまま出力。
+
+
+ テスト:
+    $0  <( yes )
+      #  上記のコマンドを実行する。Ctrl-Cを続けて5秒以内に押下すると、止まる。
+      #  yes | $0  だと、うまくいかない。
+      # Ctrl-C の受け取り方が、パイプの前のコマンドと
+      # プロセス置換 <( ) とで異なるため。
+
+=cut
