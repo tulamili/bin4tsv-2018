@@ -1,0 +1,73 @@
+#!/usr/bin/perl
+use 5.014 ; use strict ; use warnings ;
+use Getopt::Std ; getopts "!.:" , \my%o ;
+
+$| = 1 if $o{'!'} ;
+$o{'.'} //= 0 ;
+
+my $prevline = <> ;
+my $count = 1 ;
+
+sub sigint {
+    alarm 0 ;
+    print "$count+\t$prevline" ;
+    print "# Processing $.-th line. ",&dtfmtlocal ,"\n" ;
+    sleep 1 ;
+    $SIG{INT} = sub { die } ;
+    alarm 4 ;
+    $SIG{ALRM} = sub { $SIG{INT} = \&sigint } ;
+}
+
+sub dtfmtlocal {
+    my @f = @{[localtime]}[5,4,3,2,1,0] ;
+    $f[0] += 1900 ;
+    $f[1] += 1 ;
+    return sprintf ( "%04u-%02u-%02u %02u:%02u:%02u" , @f ) ;
+}
+
+
+while ( <> ) {
+
+    $SIG{INT} = \&sigint ;
+    if ( $prevline eq $_ && $count != $o{'.'} ) {
+        $count ++ ;
+        next ;
+    }
+
+    print "$count\t$prevline"  ;
+    $count = 1 ;
+    $prevline = $_  ;
+}
+
+print "$count\t$prevline" ;
+
+sub VERSION_MESSAGE{}
+
+sub HELP_MESSAGE{
+    $0 =~ s|.*/|| ;
+    while ( <DATA> ) { s/\$0/$0/g ; print $_ if s/^=head1// .. s/^=cut// } exit 0 ;
+}
+
+__END__
+
+=encoding utf8
+
+=head1
+
+  $0
+
+  Unixコマンドの  uniq を使った uniq -c の代替。
+  実行中に Ctrl+Cキーを押したら途中までの結果を表示する。
+
+オプション :
+
+  -!  : 出力をバッファにためずに、すぐフラッシュアウトするようにする。
+  -. num  : 同じ行がnum行に達するごとに表示をする。
+
+注意点:
+
+   最後が改行文字で終わらない場合は、それまでの別とは異なる行として扱う。
+   したがって、最終行は必ず1個と数え上げられる。
+
+
+=cut
