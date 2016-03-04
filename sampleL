@@ -1,123 +1,103 @@
 #!/usr/bin/perl
-use 5.014 ; use strict ; use warnings ; use feature qw/say/ ; # srandのために5.014が必要。 
+use 5.014 ; use strict ; use warnings ; use feature qw/say/ ; # srandのために5.014が必要。
 use List::Util ;
 use Term::ANSIColor qw/:constants color/; $Term::ANSIColor::AUTORESET = 1 ;
-use Getopt::Std ; getopts "r:k:nNs:vV=" , \my%o ; 
+use Getopt::Std ; getopts "r:k:nNs:vV=" , \my%o ;
 
 my ($out,$in,$maxrate)=(0,0,0) ; # 出力行数と入力行数 最大抽出確率
-&ChoreOptions ; &CoreLoop ; &PrintingSecondaryInfo ; 
-exit(0) ; 
-
-sub ChoreOptions { 
-	print  my $tmp = <> if $o{'='} ; 
-	$o{r} //= 0.5 ; # 抽出率 
+&ChoreOptions ; &CoreLoop ; &PrintingSecondaryInfo ;
+exit 0 ;
+sub ChoreOptions {
+	print  my $tmp = <> if $o{'='} ;
+	$o{r} //= 0.5 ; # 抽出率
 	$o{s} = defined $o{s} ? srand $o{s} : srand ;  # 乱数シードの保管/設定。
 }
 
-sub CoreLoop { 
+sub CoreLoop {
 	&DryRun && exit ( 0 ) if $o{V} ;
    my $intflg =  0  ; $SIG{INT} = sub { $intflg = 1 } ; # Ctrl-Cキーが押下されたときの処理指定。
 	while( <> ) {
-		chomp ; 
+		chomp ;
 		my $rRate = ! defined $o{k} ? $o{r} : $o{r} * ((split/\t/)[$o{k}-1]||0)  ; # 各行の実際の抽出率
 		$maxrate=$maxrate>$rRate? $maxrate:$rRate ;
 		my $tRnd = rand ; # 乱数を[0,1)から生成。
-		while ( $tRnd < $rRate  ) { 
-			++ $out ; 
-			print GREEN $out, "\t" if $o{N} ; 
-			print BRIGHT_GREEN $in , "\t" if $o{n} ; 
-			print $_ ; 
-			print BLUE "\t" , sprintf ( "%.7f" , $rRate ) , "\t" if $o{v} ; 
+		$in ++ ;
+		while ( $tRnd < $rRate  ) {
+			++ $out ;
+			print GREEN $out, "\t" if $o{N} ;
+			print BRIGHT_GREEN $in , "\t" if $o{n} ;
+			print $_ ;
+			print BLUE "\t" , sprintf ( "%.7f" , $rRate ) , "\t" if $o{v} ;
 			print "\n" ;
 			$rRate -- ;
 		}
-		$in ++ ;
 		if ( $intflg ) { last } ;
 	}
 }
 
 sub DryRun {
-	while( <> ) { 
-		chomp ; 
+	while( <> ) {
+		chomp ;
 		my $rRate = ! defined $o{k} ? $o{r} : $o{r} * ((split/\t/)[$o{k}-1]||0)  ; # 各行の実際の抽出率
-		print GREEN $. , "\t" ; 
-		print $_ ; 
-		print "\t" , BLUE $rRate ; 
-		print "\n" ; 
+		print GREEN $. , "\t" ;
+		print $_ ;
+		print "\t" , BLUE $rRate ;
+		print "\n" ;
 	}
 	1;
-} 
+}
 
 # 処理したことについての二次情報を出力
 sub PrintingSecondaryInfo {
+    $0 =~ s|.*/|| ;
 	my $info ;
 	$info = color('cyan')."printed lines: " . color('bright_cyan') . "$out/$in" ;
-	$info .= color('cyan')." ; used random seed: " . color('bright_cyan') . $o{s} ; 
+	$info .= color('cyan')." ; used random seed: " . color('bright_cyan') . $o{s} ;
 	$info .= color('cyan'). " ; max rate: " . $maxrate . color ('reset')  ;
-	say STDERR $info ; 
-    say STDERR GREEN join " " , "Shuffled line numers:",  List::Util::shuffle 1 .. $out if $o{N} ; 
+    $info .= color('cyan') . " ($0)" . color( 'reset' ) ;
+	say STDERR $info ;
+    say STDERR GREEN join " " , "Shuffled line numers:",  List::Util::shuffle 1 .. $out if $o{N} ;
 }
-exit(0);
+
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE{ $0=~s|.*/|| ; for(<DATA>){ s/\$0/$0/g ; print $_ if s/^=head1//..s/^=cut//} exit 0 }
 
 __END__
 =encoding utf8
 
 =head1
 
-=head2 sampler.pl
+ sampler.pl
 
-=head1 
+ -r 浮動小数  抽出確率を指定。
+ -= 入力の最初の1行目はそのまま出力し、ランダム抽出の対象とはしない。
+ -n 行番号を付加。
+ -N 1から抽出した行数の整数をシャッフルして出力した数を出力
+ -v その行の抽出確率の指定値が、行の末尾に表示される。
+ -V 確率的抽出動作はしない。単に各行の末尾に抽出指定値を付加する。
 
-=head3 -r 浮動小数  抽出確率を指定。 
 
-=head3 -= 入力の最初の1行目はそのまま出力し、ランダム抽出の対象とはしない。
+ [用途と使い方]
 
-=head3 -n 行番号を付加。
+ 標準入力の各行を、指定された確率で、標準出力に書き出す。
+ 出力において順番の入れ替えはしない。
 
-=head3 -N 1から抽出した行数の整数をシャッフルして出力した数を出力
+ sampler.pl -r 1e-2
 
-=head3 -v その行の抽出確率の指定値が、行の末尾に表示される。
+   # 標準入力の各行を100個に1個出力。
 
-=head3 -V 確率的抽出動作はしない。単に各行の末尾に抽出指定値を付加する。
+ sampler.pl -r (rate) -k (key)
 
-=head2
+ # 各行の抽出確率が タブ区切り key 列目(1始まり)の値の数 を
+ # rate にかけ算した数になる。
 
-=head1 [用途と使い方]
 
-=head2
+ [注意点]
 
-=head2 標準入力の各行を、指定された確率で、標準出力に書き出す。
+ 各行の抽出確率r の値が0以上1以下の数でない場合の処理について:
+  r>1 の場合は、まずint(r)回同じ行を書き出し、そして、r-int(r)の確率で1回出力する。
+  r<0 の場合は、何も出力をしない。
+ このようにすることで、各行が抽出される回数の期待値が、r>0の場合に r回となる。
 
-=head2 出力において順番の入れ替えはしない。
-
-=head2
-
-=head2 sampler.pl -r 1e-2
-
-=head3   # 標準入力の各行を100個に1個出力。
-
-=head4
-
-=head2 sampler.pl -r (rate) -k (key)
-
-=head3 # 各行の抽出確率が タブ区切り key 列目(1始まり)の値の数 を 
-
-=head3 # rate にかけ算した数になる。
-
-=head2
-
-=head1 [注意点] 
-
-=head1 
-
-=head2 各行の抽出確率r の値が0以上1以下の数でない場合の処理について: 
-
-=head3  r>1 の場合は、まずint(r)回同じ行を書き出し、そして、r-int(r)の確率で1回出力する。
-
-=head3  r<0 の場合は、何も出力をしない。
-
-=head3 このようにすることで、各行が抽出される回数の期待値が、r>0の場合に r回となる。
-
-=head3  
 
 =cut
