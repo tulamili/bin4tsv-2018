@@ -1,0 +1,74 @@
+#!/usr/bin/perl
+use 5.014; use strict ; use warnings ;
+use Getopt::Std ; getopts "e:f:k:qvy" , \my%o ;
+use Encode qw/decode_utf8 encode_utf8/ ;
+use Term::ANSIColor qw/:constants/ ; $Term::ANSIColor::AUTORESET = 1 ;
+my $search ;
+my $lineproc ;
+&choreOpts ;
+&main ;
+exit 0 ;
+
+# メインの部分の処理
+sub main {
+	my ($oL,$mL,$tL) ; # 行の個数を数える。
+	while ( <> ) {
+		chomp ;
+		$_ = decode_utf8 $_ ;
+		my @F = split /\t/ , $_ , -1 ;
+		my $kstr = defined $o{k} ? $F[ $o{k} ] : $_ ;  # -k の指定がなければ、行全体からマッチするものを探す。
+		$oL +=  ( $lineproc -> ( $o{v} ^ $kstr =~ m/$search/ ) ) ;
+		$tL ++ ;
+	}
+	$mL = $o{v} ? $tL - $oL : $oL ;
+	$0 =~ s|.*/|| ;
+	print STDERR CYAN "match:$mL unmatch:", $tL-$mL , " total:$tL ($0)"  , "\n" unless $o{q} ;
+}
+
+# コマンドの引数の部分の処理
+sub choreOpts {
+
+	$lineproc = sub { if ($_[0]) { print encode_utf8($_) , "\n" ; return 1} else { return 0 } } ; # printもするし、個数も返す。
+	$lineproc = sub { my $y =  $_[0] ? 1 : 0 ; print $y,"\n" ; return $y } if $o{y} ;
+	$o{k} = $o{k} > 0 ? $o{k} - 1 : $o{k} if defined $o{k} ; # 負の数であれば、末尾から列位置を数えることになる。
+	$o{v} //= 0 ;
+
+	# 検索する正規表現の構成
+	$search = decode_utf8 shift @ARGV if defined $ARGV[0]  ;
+	if ( defined $o{f} ) {
+		my @words = () ;
+		open my $fh , "<" , $o{f} or die "File `$o{f}' including the search words missing.  " , $! ;
+		while ( <$fh> ) {
+			chomp ;
+			push @words , decode_utf8( $_ )  ;
+		}
+	  $search = join "|" , @words ;
+	}
+}
+
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE { $0 =~ s|.*/|| ; while(<DATA>){ s/\$0/$0/g; print $_ if s/^=head1// .. s/^=cut// } exit 0 }
+
+__END__
+
+=encoding utf8
+
+=head1
+
+ $0 regex
+   指定した列に、指定した正規表現があれば、その行全体を出力する。
+   主要な動作の後に、標準エラー出力に処理した行数などを出力。
+
+  $0 -k 列番号  正規表現       # 最も想定されている使い方。
+  $0 -k 列番号 -f ファイル名   # ファイルの各行に検索したい正規表現があると見なされる。
+  $0 正規表現                 #  列を指定しないで、行全体からマッチすれば、その行を出力
+  $0 -v -k 列番号 正規表現     # -v の指定により、マッチしない行を出力する。
+
+ オプション :
+  -k num : 検索対象を探す列を1個指定する。最左列は1、最右列は-1であり、右に向かうほど1ずつ増加。
+  -f filename : 検索する正規表現が含まれているファイルの指定。各行がOR条件で検索されることになる。
+
+  -v : 行の選択が反転する(マッチしない行が選択される)。
+  -y : マッチするかどうかで 1/0のみ各行に出力する。
+  -q : 何行マッチした、などの付加情報を標準エラー出力に出力しない。
+=cut
