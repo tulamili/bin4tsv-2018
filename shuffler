@@ -2,7 +2,7 @@
 use 5.014 ; use strict ; use warnings ; # 5.014 is neccesary for srand to work well.
 use List::Util ;
 use Term::ANSIColor qw/:constants color/; $Term::ANSIColor::AUTORESET = 1 ;
-use Getopt::Std ; getopts "=ns:!",\my%o ;
+use Getopt::Std ; getopts "=ns:q!",\my%o ;
 print STDERR "\$o{s}=$o{s}\n" if $o{'!'} ;
 &procOptions ; &choreHeader ; &coreLoops ; exit ( 0 ) ;
 
@@ -19,12 +19,19 @@ sub coreLoops {
 		  print $lines[$_] ;
 	 }
      $0 =~ s|.*/|| ;
-	 say STDERR CYAN "used randmom seed: $o{s} ($0)." ; # 処理したことについての派生的情報を出力
+	 print STDERR CYAN "used randmom seed: $o{s} ($0).\n" unless $o{q} ; # 処理したことについての派生的情報を出力
 
 }
 
 sub VERSION_MESSAGE{}
-sub HELP_MESSAGE{ $0=~s|.*/|| ; while ( <DATA> ){ s/\$0/$0/g ; print $_ if s/^=head1// .. s/^=cut// } exit 0 }
+sub HELP_MESSAGE{
+    $0=~s|.*/|| ; $ARGV[1] //= '' ;
+    while(<DATA>){
+        s/\$0/$0/g ;
+        print $_ if $ARGV[1] =~ /opt/ ? m/^\ +\-/ : s/^=head1// .. s/^=cut// ;
+    }
+    exit 0 ;
+}
 __END__
 
 =encoding utf8
@@ -42,5 +49,5 @@ __END__
  -= 入力の最初の1行目はそのまま出力し、シャッフルの対象とはしない。
  -n 各行の先頭に、何行目から来たかを表示。
  -s 乱数のシードを指定する。
-
+ -q 乱数シード情報を出さない。
 =cut
