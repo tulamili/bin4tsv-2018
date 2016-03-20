@@ -1,22 +1,21 @@
 #!/usr/bin/perl
-my %o ;
-BEGIN{
-    use 5.014 ; use strict ; use warnings ;# confirmed on 5.011 5.014 5.018
-    use Getopt::Std ; getopts "n:mz=" , \%o ;
-    my $lib="PerlIO::gzip" ; eval "use $lib;1" or $o{z} and die "Coudn't use $lib though \$o{z} is specified." ;
-} ;
+use 5.014 ; use strict ; use warnings ;# confirmed on 5.011 5.014 5.018
+use Getopt::Std ; getopts "n:mz=" , \my%o ;
+use PerlIO::gzip ; #    my $lib="PerlIO::gzip" ; eval "use $lib;1" or die "Coudn't use $lib though \$o{z} is specified." if $o{z} ;
 use List::Util qw/max min maxstr minstr/ ;
 use List::MoreUtils qw/all firstval pairwise uniq apply part/ ;
 use POSIX qw/atof strtod/;
 use Scalar::Util qw/looks_like_number/;
 use Term::ANSIColor qw/:constants color/ ; $Term::ANSIColor::AUTORESET = 1 ;
 use PerlIO::gzip ;
+
 # 全体的に使う変数
+my @ecoldc ;  # $ecoldc[列番号-1]{データ値} = 度数 となる。
+my ( $maxcolNum , $headStr , @colnames ) = 0  ;
+my $intflg ;
+
 &choreHeader ;
 while (1) {
-    my @ecoldc ;  # $ecoldc[列番号-1]{データ値} = 度数 となる。
-    my ( $maxcolNum , $headStr , @colnames ) = 0  ;
-    my $intflg ;
     $SIG{INT}=sub{$intflg=1} ;
     &procReading ;
     &procOutput ;
