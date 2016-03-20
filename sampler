@@ -1,96 +1,123 @@
 #!/usr/bin/perl
-use 5.014 ; use strict ; use warnings ; use feature qw/say/ ; # srandのために5.014が必要。
+use 5.014 ; use strict ; use warnings ; # srandのために5.014が必要。
 use List::Util ;
 use Term::ANSIColor qw/:constants color/; $Term::ANSIColor::AUTORESET = 1 ;
-use Getopt::Std ; getopts "r:k:nNs:vV=" , \my%o ;
+use Getopt::Std ; getopts "k:nNqr:s:u:vV=.:,:" , \my%o ;
 
-my ($out,$in,$maxrate)=(0,0,0) ; # 出力行数と入力行数 最大抽出確率
+my $in = 0 ; # 入力行数
+my $out = 0 ; # 出力行数
+my $ratesum = 0 ; # 全行の抽出確率の総和;  出力行数の期待値の母数になる。
+#my ($out,$in,$maxrate)=(0,0,0) ; # 出力行数と入力行数 最大抽出確率
+my $sep ; # 入出力の区切り文字
+
 &ChoreOptions ; &CoreLoop ; &PrintingSecondaryInfo ;
 exit 0 ;
 sub ChoreOptions {
-	print  my $tmp = <> if $o{'='} ;
-	$o{r} //= 0.5 ; # 抽出率
-	$o{s} = defined $o{s} ? srand $o{s} : srand ;  # 乱数シードの保管/設定。
+        print  my $tmp = <> if $o{'='} ;
+        $o{r} //= 0.1 ; # 抽出確率
+        $o{s} = defined $o{s} ? srand $o{s} : srand ;  # 乱数シードの保管/設定。
+    $o{'.'} //= 1 ; # 抽出確率の表示の時に、乗じる係数
+    $o{','} //= "\t" ;
+    $sep = eval qq[qq[$o{','}]]  ;
+    $o{'g'} //= "inf" ;
 }
 
 sub CoreLoop {
-	&DryRun && exit ( 0 ) if $o{V} ;
+        &DryRun && exit ( 0 ) if $o{V} ;
    my $intflg =  0  ; $SIG{INT} = sub { $intflg = 1 } ; # Ctrl-Cキーが押下されたときの処理指定。
-	while( <> ) {
-		chomp ;
-		my $rRate = ! defined $o{k} ? $o{r} : $o{r} * ((split/\t/)[$o{k}-1]||0)  ; # 各行の実際の抽出率
-		$maxrate=$maxrate>$rRate? $maxrate:$rRate ;
-		my $tRnd = rand ; # 乱数を[0,1)から生成。
-		$in ++ ;
-		while ( $tRnd < $rRate  ) {
-			++ $out ;
-			print GREEN $out, "\t" if $o{N} ;
-			print BRIGHT_GREEN $in , "\t" if $o{n} ;
-			print $_ ;
-			print BLUE "\t" , sprintf ( "%.7f" , $rRate ) , "\t" if $o{v} ;
-			print "\n" ;
-			$rRate -- ;
-		}
-		if ( $intflg ) { last } ;
-	}
+        while( <> ) {
+                chomp ;
+        my $coeff = 1 ;
+        if ( $o{k} ) { $coeff = (split /$sep/, $_ , $o{k}+1 )[ $o{k} -1 ] || 0 } ;
+                my $rRate = $o{r} * $coeff ; # 各行の実際の抽出率
+                my $tRnd = rand ; # 乱数を[0,1)から生成。
+                $in ++ ;
+        next if $o{u} && $coeff > $o{u} ;
+                $ratesum +=  $rRate ; #$maxrate=$maxrate>$rRate? $maxrate:$rRate ;
+        my $rRate_ = $rRate ;
+                while ( $tRnd < $rRate_  ) {
+                        ++ $out ;
+                        print GREEN $in , "$sep" if $o{n} ;
+                        print $_ ;
+                        print BRIGHT_BLUE "$sep" , rate4print( $rRate ) , "$sep" if $o{v} ;
+                        print "\n" ;
+                        $rRate_ -- ;
+                }
+                if ( $intflg ) { last } ;
+        }
 }
 
 sub DryRun {
-	while( <> ) {
-		chomp ;
-		my $rRate = ! defined $o{k} ? $o{r} : $o{r} * ((split/\t/)[$o{k}-1]||0)  ; # 各行の実際の抽出率
-		print GREEN $. , "\t" ;
-		print $_ ;
-		print "\t" , BLUE $rRate ;
-		print "\n" ;
-	}
-	1;
+        while( <> ) {
+                chomp ;
+                my $rRate = ! defined $o{k} ? $o{r} : $o{r} * ((split/$sep/)[$o{k}-1]||0)  ; # 各行の実際の抽出率
+                print GREEN $. , "$sep" ;
+                print $_ ;
+                print "$sep" , BRIGHT_BLUE rate4print(  $rRate ) ;
+                print "\n" ;
+        }
+}
+
+sub rate4print ($) {    sprintf ( "%5g" , $_[0] * $o{'.'} ) }
+
+sub num4print( $ ) {
+    my $z1 = sprintf "%4.2f",$_[0] ;
+    my $z2 = sprintf "%1.3e", $_[0] ;
+    $_[0] >= 0.1 ? length( $z1 ) <= length( $z2 ) ? $z1 : $z2 : $z2 ;
 }
 
 # 処理したことについての二次情報を出力
 sub PrintingSecondaryInfo {
     $0 =~ s|.*/|| ;
-	my $info ;
-	$info = color('cyan')."printed lines: " . color('bright_cyan') . "$out/$in" ;
-	$info .= color('cyan')." ; used random seed: " . color('bright_cyan') . $o{s} ;
-	$info .= color('cyan'). " ; max rate: " . $maxrate . color ('reset')  ;
-    $info .= color('cyan') . " ($0)" . color( 'reset' ) ;
-	say STDERR $info ;
-    say STDERR GREEN join " " , "Shuffled line numers:",  List::Util::shuffle 1 .. $out if $o{N} ;
+        my $info ;
+        $info = color('cyan')."printed lines: " . color('bright_cyan') . "$out/$in" ;
+        $info .= color('cyan'). " ; a priori expected line number : " . num4print ( $ratesum ) . color ('reset')  ;
+        $info .= color('cyan')." ; used random seed: " . color('bright_cyan') . $o{s} ;
+        $info .= color('cyan') . " ($0)" . color( 'reset' ) ;
+        print STDERR $info, "\n" unless $o{q} ;
 }
 
 sub VERSION_MESSAGE {}
-sub HELP_MESSAGE{ $0=~s|.*/|| ; for(<DATA>){ s/\$0/$0/g ; print $_ if s/^=head1//..s/^=cut//} exit 0 }
+sub HELP_MESSAGE{
+    $0=~s|.*/|| ; $ARGV[1] //= '' ;
+    while(<DATA>){
+        s/\$0/$0/g ;
+        print $_ if $ARGV[1] =~ /opt/ ? m/^\ +\-/ : s/^=head1// .. s/^=cut// ;
+    }
+    exit 0 ;
+}
 
 __END__
 =encoding utf8
 
 =head1
+ $0
 
- sampler.pl
-
- -r 浮動小数  抽出確率を指定。
- -= 入力の最初の1行目はそのまま出力し、ランダム抽出の対象とはしない。
- -n 行番号を付加。
- -N 1から抽出した行数の整数をシャッフルして出力した数を出力
+ -r num(実数) : 抽出確率を指定。0.1 や 1e-2 など指定する。0.5 がデフォルトの値。
+ -k num(自然数)  : 1始まりの列番号を指定することで、その数を -r で指定された数に乗じた数が抽出確率になる。
+ -n 行番号を付加して表示される。
+ -q : 標準エラー出力に出すことになっている出力行数や乱数シードの情報を出力しない。
+ -u num : -kの指定がある場合に、その列の値が num 以下のみであれば、出力の対象となる。
  -v その行の抽出確率の指定値が、行の末尾に表示される。
- -V 確率的抽出動作はしない。単に各行の末尾に抽出指定値を付加する。
 
+ -V 確率的抽出動作はしない。単に各行の末尾に抽出指定値を付加する。
+ -= 入力の最初の1行目はそのまま出力し、ランダム抽出の対象とはしない。
+ -. num(実数) : 各行の抽出確率を出力する際に、数字を見やすくするために、num倍したものを出力する。
+ -, str  : 区切り文字をタブ文字から変更する場合に用いる。
 
  [用途と使い方]
 
  標準入力の各行を、指定された確率で、標準出力に書き出す。
  出力において順番の入れ替えはしない。
 
- sampler.pl -r 1e-2
+  $0 -r 1e-2
 
    # 標準入力の各行を100個に1個出力。
 
- sampler.pl -r (rate) -k (key)
+  $0 -r (rate) -k (key)
 
  # 各行の抽出確率が タブ区切り key 列目(1始まり)の値の数 を
  # rate にかけ算した数になる。
-
 
  [注意点]
 
@@ -98,6 +125,4 @@ __END__
   r>1 の場合は、まずint(r)回同じ行を書き出し、そして、r-int(r)の確率で1回出力する。
   r<0 の場合は、何も出力をしない。
  このようにすることで、各行が抽出される回数の期待値が、r>0の場合に r回となる。
-
-
 =cut
