@@ -1,28 +1,60 @@
 #!/usr/bin/perl
-use 5.011 ; use strict ; use warnings ; use feature qw/say/ ; 
-use Getopt::Std ; getopts "s:" , \my%o ; 
-#use File::Handle ; 
-use IPC::Open2 ; 
-my $pid = open2 ( *Reader , *Writer , join " " , @ARGV ) ; 
+use 5.001 ; use strict ; use warnings ; # 5.001 ; 5.011 ,5.014 で動作確認済み。 
+use Getopt::Std ; getopts "s:t=" , \my%o ; 
+use File::Temp qw[ tempfile ] ;
+eval "use IPC::Open2;1" or do { $o{t} = 1 ; print STDERR "Cannot use IPC::Open2. Trying to use a temp file." }  ; 
 
 $o{s} //= 1 ; 
 
-while ( <STDIN> ) { last if $. > $o{s}  ; print $_ ; }
-do { print Writer $_ } while ( <STDIN> ) ;
-close *Writer ; 
+# ハンドラの準備
+my $pid = open2 ( *Reader , *Writer , join " " , @ARGV ) unless $o{t} ; 
+(*Writer, my $fn )  = tempfile if $o{t} ;
 
-while ( <Reader> ) { print $_ ; }
-close *Reader ; 
-
+$SIG{INT} = \&sigint ; 
+&readIn ;
+print "=", "\n"  if $o{'='} ;
+&writeOut ;
+unlink $fn if $o{t} ;
 exit 0 ;
 
-sub VERSION_MESSAGE {} 
+# 関数
+sub readIn { 
+    while ( <STDIN> ) { last if $. > $o{s}  ; print $_ ; }
+    do { print Writer $_ } while ( <STDIN> ) ;
+    close *Writer ; 
+}
+sub writeOut { 
+    #$SIG{INT} = sub { die } ;
+    open *Reader , join ' ',  'cat' , $fn, '|',  @ARGV , '|'  if $o{t} ; 
+    while ( <Reader> ) { print $_ ; }
+    close *Reader ; 
+}
 
-sub HELP_MESSAGE { 
-    $0 =~ s/.*\/// ; 
-    while ( <DATA> ) {
-        s/\$0/$0/g ; 
-        print $_ if s/^=head1// .. s/^=cut// ; 
+sub sigint { 
+    print STDERR "\nProcessing $.-th line, " , scalar localtime , "\n" ; 
+    print STDERR "temp file path : $fn\n" ;
+    ##sleep 1 ; 
+    ##$SIG{INT} = sub { unlink $fn if $o{t} ; die } ;
+    sleep 1 ; 
+    $SIG{INT} = \&sigint2 ;
+    $SIG{ALRM} = sub { $SIG{INT} = \&sigint } ; 
+    alarm 2 ; 
+}
+
+sub sigint2 { 
+    &writeOut ;
+    $SIG{INT} = sub { unlink $fn if $o{t} ; die } ;  
+    $SIG{ALRM} = sub { $SIG{INT} = \&sigint } ; 
+    alarm 2 ; 
+}
+
+# ヘルプの表示
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE{
+    $0=~s|.*/|| ; $ARGV[1] //= '' ;
+    while(<DATA>){
+        s/\$0/$0/g ;
+        print $_ if $ARGV[1] eq 'opt' ? m/^\ +\-/ : s/^=head1// .. s/^=cut// ; 
     }
     exit 0 ;
 }
@@ -34,14 +66,30 @@ __END__
 
 =head1
 
-   cat somefile | $0 -s 3 somecommand 
+ cat somefile | $0 -s 3 somecommand 
+ $0 -s 1 sort -nk3  < somefile 
 
-   $0 -s 1 sort -nk3  < somefile 
-
-   -s で指定された行はそのまま表示して、
+   -s で指定された行はそのまま表示する。
    残りを、引数で指定されたコマンドに渡す.
 
+   -t で内部処理に一時ファイルを使う。(未指定なら双方向パイプを使う。) 
+   -= で境界を = で示す。
 
+    Ctrl+C で、まずどこまで処理できたか、一時ファイルを使っていれば
+    そのパスを表示する。1秒待ち、その後の2秒間でCtrl+Cを再び押下されたら
+    途中までの結果を出力して1秒待ち、さらに2秒以内にCtrl+Cが押下されたら
+    このプログラムは動作を停止する。
+     
+ 開発上のメモ: 
+   * -s よりも良いアルファベットがあるかも知れない。
+   * 一時ファイルのパスの表示の仕方にもっと洗練が出来そう。
+   * もう少し関数でラッピングしよう。
+   * $o{t}の出現回数がやや多すぎかもしれない。プログラムを洗練せよ。
+   * ファイルを開くときに、2本のパイプを使っている箇所がある。環境/版依存ではないか? 
+   * Ctrl+C 押下時の一連の動作に、洗練が必要。
+
+ テスト例: 
+  seq 20 | headkeep -= -s3  "sort | gawk '{\$1*=10;print}' "
 
 
 =cut
