@@ -1,0 +1,74 @@
+#!/usr/bin/perl 
+use 5.014 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts '1lLcu=,:' , \my%o ;
+use Encode qw/decode_utf8/ ; 
+
+my ($pretreat, $midtreat, $printout) ; 
+&optChore ;  
+print (my $tmp=<>) if $o{'='} ; 
+while ( <> ) { $printout -> ( $midtreat -> ( $pretreat -> ( $_ ) ) ) }
+exit 0 ;
+
+# Functions 
+sub optChore { 
+  # 区切り文字に関して
+  $o{','} //= "\t" ;
+
+  # オプション-u および -L があるかどうかで、各行文字列に対する処理を変更。 
+  $pretreat = 
+    $o{u} ? 
+      $o{L} ? 
+        sub($){ decode_utf8 $_[0] } : 
+        sub($){ chomp $_[0] ; decode_utf8 $_[0] } :  
+      $o{L} ? 
+        sub($){ $_[0] } : 
+        sub($){ chomp $_[0] ; $_[0] }  ;  
+  # 中心となる処理
+  $midtreat = 
+    $o{l} ? 
+      sub($) { length ( $_[0] ) } : # 行の長さ 
+    $o{c} ? 
+      sub($) { scalar @{[ split /$o{','}/, $_[0] , -1 ]} } : # 列の個数
+      sub($) { join $o{','} , map{ length } split /$o{','}/,$_[0],-1 } ; # 各列の文字列の長さ 
+  # オプション-1があるかどうかで出力の挙動を変える。
+  $printout = 
+    $o{1} ?  
+      sub { chomp; print @_,$o{','},$_,"\n" } : # <- $_ は保守上、まずいかも。 
+      sub { print @_,"\n" } ; 
+}
+
+sub VERSION_MESSAGE { } 
+sub HELP_MESSAGE { 
+    $0 =~ s/.*\/// ; 
+    while ( <DATA> ) {
+        s/\$0/$0/g ; 
+        print $_ if s/^=head1// .. s/^=cut// ; 
+    }
+    exit 0 
+}
+__END__ 
+
+=encoding utf8 
+
+=head1
+
+ $0 
+
+ 入力データを各行を区切り文字ごとに区切って、文字の長さに変換して出力する。
+ 行末の改行文字は特にオプションで指示のない限り、長さ計算の対象ではない。
+
+オプション :
+
+  -=   :  一行目を(ヘッダと見なして)そのまま出力する。
+  -u   :  utf-8 とみなして、長さを計算する。そうでなければ、単純なバイト長になる。
+  -c   :  列の数を数える。
+  -l   :  各行の全体の文字列の長さを算出する。行末の改行文字を含めない。-c は無効化される。
+  -L   :  各行について、行末の改行文字を除去する操作を行わない。
+  -1   :  各行について、元の文字列を右側に付加する。
+
+
+ヒント: 
+
+  $0 -= some.tsv | colsummary -= とすると、長さの分布が得られる。
+
+=cut
