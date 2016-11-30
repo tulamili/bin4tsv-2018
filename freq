@@ -1,128 +1,198 @@
-#!/usr/bin/perl
-use 5.011 ; use strict ; use warnings ; # Already confirmed that 5.001, 5.011, 5.018 is ok.
-use List::Util qw{sum} ;
-use Getopt::Std ;my %o ; getopts "1de:knrsuEKPSW%=" , \%o  ;
+#!/usr/bin/perl 
+use 5.001 ; use strict ; use warnings ; # Already confirmed that 5.001, 5.011, 5.018 is ok.
+use List::Util qw{sum} ; 
+use Getopt::Std ; getopts "1efkl:nqrsy:=%" , \my %o  ; 
 use Term::ANSIColor qw/color :constants/ ; $Term::ANSIColor::AUTORESET = 1 ;
+use FindBin qw[ $Script ] ; 
+use autodie qw [ open ] ; 
 
 my %strcnt ; # 数える対象の文字列(各行から最後の改行文字列を取り除いたもの) に対して、数えた数を入れる。
-my ($totalSum, $cumsum ) = ( 0 , 0 ) ; # 累和カウンタ
+my $cumsum =  0  ; # 累和カウンタ
 my $sep = "\t" ; # 出力用セパレータ
-print STDERR "\$PID=$$\n"  if $o{P} ; # <- 何をする??
 my $intflg = 0 ;
-my $header = <> if ($o{q/=/} );
-& reading() ; ### 1. 読む
-& output() ;  ### 2. 出力する
-exit(0) ;
+my $header = <> if $o{q/=/} ;
+my $readLines ; 
+
+my @rangebottom ; # 頻度が指定された場合の挙動を指定する。いくつか区間が指定された場合の下限の並び
+my @rangetop ; # 頻度が指定された場合の挙動を指定する。いくつか区間が指定された場合の上限の並び
+
+sub readKeyList ( ) ; # 別ファイルに読み取るべき、行が指定されている場合を想定している。
+sub freqFilter ( $ ) ; 
+sub initial ( ) ; # 0. 初期化
+sub reading ( ) ; # 1. 読む
+sub output ( ) ; # 2. 出力する
+sub sigint0 ( ) ; 
+sub sigint1 ( ) ; 
+sub sigint2 ( ) ; 
+
+initial  ; 
+reading ;  ### 1. 読む
+output ;  ### 2. 出力する
+exit ;
+
 
 # ここからは関数
-sub sigint1 {
-    alarm 0 ;
-    $intflg = 0 ;
-    print STDERR YELLOW "Processing $.-th line. ", scalar localtime , "\n"  ;
-    sleep 1 ;
-    $SIG{INT} = \&sigint2 ;
-    $SIG{ALRM} = sub { $SIG{INT} = sub { $intflg = 1 }  } ;
-    alarm 4 ;
+
+sub readKeyList ( ) { 
+    open my $FH , "<" , $o{l} ; 
+    my @tmplist ; 
+    while ( <$FH> ) { 
+        chomp ; 
+        push @tmplist , $_ ;
+    }
+    close $FH ; 
+    return @tmplist ; 
 }
 
-sub sigint2 {
-    alarm 0 ;
-    sleep 1 ;
-    $SIG{INT} = sub { print color('reset') ; die } ;
-    $SIG{ALRM} = sub { $SIG{INT} = \&sigint1 } ;
-    alarm 4 ;
-    print color('cyan') ;
-    &output  ;
-    print color('reset') ;
+#
+sub freqFilter ( $ ) { 
+    return 1 unless @rangebottom ; 
+    for ( 0 .. $#rangebottom ) { 
+        return 1 if $rangebottom[$_] <= $_[0] && $_[0] <= $rangetop[$_] ;
+    }
+    return undef ; 
 }
 
-sub reading {
-    $SIG{INT} = sub { $intflg = 1 } ;
-    while ( <> ) {
+# 
+sub initial ( ) { 
+	$o{y} //= '' ;
+	my @ranges = split /,/ , $o{y} , -1 ; 
+	grep { $_ = $_ . ".." . $_ unless m/\.\./ } @ranges ;
+	for ( @ranges ) { 
+		m/^(\d*)\.\.(\d*)/ ; 
+		push @rangebottom , ( $1 || 1 )  ; 
+		push @rangetop , ( $2 || "Inf" ) ; 
+ 	}
+}
+
+# 読取り
+sub reading ( ) { 
+    $SIG{ INT } = \& sigint0 ;
+    while ( <> ) { 
         chomp ;
-        if ( $o{E} && $_ eq qq{} or $o{W} && /^\s*$/ ) { next ; } # -Eオプションの時は、空文字列を飛ばす -Wのときは空白文字行を飛ばす
-        if ( $o{e} && $_ eq qq{} ) { $_ = $o{e} } ; # -eオプションで、空文字をどの文字列に置き換えるか指定する。
-        $strcnt { $_ } ++ ;
-        if ( $intflg ) { &sigint1 } ;
-    }
+        next if $o{e} && $_ eq qq{} ; # or $o{W} && /^\s*$/ ;  # -Eオプションの時は、空文字列を飛ばす -Wのときは空白文字行を飛ばす
+        #$_ = $o{e} if $o{e} && $_ eq qq{} ; # -eオプションで、空文字をどの文字列に置き換えるか指定する。
+        $strcnt { $_ } ++ ; 
+        sigint1 if $intflg ; 
+    } 
+    $readLines = $. ;
+}
+ 
+sub output ( ) { 
+    # キー集合、特にその順序の調整 
+    my @k ;
+    @k = defined $o{l} ? readKeyList  : sort keys %strcnt ; # <-- - ここの sort を消そうかどうか迷った。
+    @k = sort { $strcnt{$a} <=> $strcnt{$b} } @k if $o{f} ;  # -f オプションによりコンテンツの数であらかじめ、ソートする 
+    @k = sort { $a cmp $b } @k if $o{k} ;  # -k オプションによりキー文字列であらかじめ、ソートする 
+    @k = sort { $a <=> $b } @k if $o{n} ; # -n オプションによりキー文字列であらかじめ、ソートする 
+    @k = reverse @k if $o{r} ;   # r オプションで逆順ソート
+    my $totalSum = sum ( values %strcnt ) ; # 総行数の格納。
+    my $outLines = 0 ; # 出力した行数
+ 
+    # 書き出し
+    $header = "LINE_STR\n" unless defined $header ; 
+    $header = "FREQ" . $sep . $header ; 
+    $header = "RATIO" . $sep . $header if $o{'%'} ; 
+    $header = "ACCUM" . $sep . $header if $o{'s'} ;
+    $header = "CUMRA" . $sep . $header if $o{'s'} && $o{'%'} ;
+    $o{'='} ? print $header : $o{q} ? 0 : print STDERR GREEN $header ;  
+
+    for ( @k ) { 
+        $strcnt{ $_ } //=  0 ;
+        next unless freqFilter ( $strcnt{$_} ) ; 
+
+        if ( $o{s} ) { # -s オプションにより、累和を表示。 
+            $cumsum += $strcnt { $_ } ;
+            print sprintf "%5.2f%%$sep", 100.0 * $cumsum / $totalSum if $o{'%'} ;   
+            print $cumsum, $sep ;
+        }     ; 
+
+        printf "%5.3f%%$sep", 100.0 * $strcnt{$_} / $totalSum if $o{'%'} ;  
+        print $o{1} ? $_ : $strcnt{$_} . $sep . $_ ; # -1オプションがあれば個数を表示しない。
+        print "\n" ;
+        $outLines ++ ; 
+    } 
+    print STDERR CYAN "$readLines lines processed. $totalSum lines are counted. $outLines diffent lines appears. ($Script)\n" unless $o{q} ;
+}
+
+# 何行目を処理中かを表示(Ctrl-Cを押した時)
+sub sigint0 ( ) { 
+    $intflg = 1 ; 
+    print STDERR YELLOW "Processing $.-th line. ", scalar localtime , "\n"  ; 
+    #$SIG{ INT } = sub { die } ;
+    #$SIG{ ALRM } = sub { $SIG{ INT } = \& sigint0 } ;
+    #alarm 1 ; 
+}
+
+# 1秒以内にCtl+Cを再び押したら、sigint2 に飛ぶ。 
+sub sigint1 ( ) { 
+    alarm 0 ;
+    $intflg = 0 ;  
+    sleep 1 ; 
+    $SIG{ INT } = \& sigint2 ; 
+    $SIG{ ALRM } = sub { $SIG{ INT } = \& sigint0 } ; #  sub { $intflg = 1 }  } ; 
+    alarm 1 ; 
+}
+
+# Ctrl-C で 結果まで出力する。
+sub sigint2 ( ) { 
+    alarm 0 ; 
+    sleep 1 ; 
+    $SIG{ INT } = sub { print color('reset') ; die } ;
+    $SIG{ ALRM } = sub { $SIG{ INT } = \& sigint0 } ; 
+    alarm 1 ;
+    print color('cyan') ; 
+    output ; 
+    print color('reset') ; 
 }
 
 
-sub output {
-    print "header:\t", $header if ( defined $header ) ;
-    my @k = sort keys %strcnt ;
-
-    if    ( $o{d} ) { @k = grep { $strcnt { $_ } >  1 } @k }  # -d オプションにより、2個以上のもののみを残す。
-    elsif ( $o{u} ) { @k = grep { $strcnt { $_ } == 1 } @k }  # -u オプションにより、2個以上のもののみを残す。
-    if ( $o{n} ) { @k = sort { $strcnt{$a} <=> $strcnt{$b} } @k } # -n オプションによりコンテンツの数であらかじめ、ソートする
-    if ( $o{k} ) { @k = sort { $a cmp $b } @k }  # -k オプションによりキー文字列であらかじめ、ソートする
-    if ( $o{K} ) { @k = sort { $a <=> $b } @k }  # -k オプションによりキー文字列であらかじめ、ソートする
-    if ( $o{r} ) { @k = reverse @k }  # r オプションで逆順ソート
-    if ( $o{'%'} ) { $totalSum = sum ( values %strcnt ) } ; # '%'オプションにより、まず比率を計算するための総和を計算。
-
-    for ( @k ) {
-    if ( $o{s} ) {
-        $cumsum += $strcnt { $_ } ;
-        if ( $o{'%'} ) { print sprintf "%5.2f%%$sep", 100.0*$cumsum / $totalSum }
-        print $cumsum, $sep ;
-    }     ; # -s オプションにより、累和を表示。
-    if ( $o{'%'} ) { printf "%5.2f%%$sep", 100.0*$strcnt{$_} / $totalSum }
-    print +( $strcnt{$_}.$sep ) x ($o{1}?0:1) . $_ ; # -1オプションがあれば個数を表示しない。
-    print "\n" ;
-    }
-    if ( $o{S} ) { print  sum ( values %strcnt ) , "\n" }  # -S オプションがあれば、最後に合計の数を表示
-}
-
-sub VERSION_MESSAGE{ }
-sub HELP_MESSAGE{
-    $0=~s|.*/|| ;
+## ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
     $ARGV[1] //= '' ;
-
-    if ( $ARGV[1] =~ m/opt/ ) {
-       while ( <DATA> ) {
-            print $_ if m/^\ +\-/ ;
-       }
-       exit 0
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
     }
-    while(<DATA>){
-        s/\$0/$0/g ;
-        print $_ if s/^=head1//..s/^=cut//
-    }
+    close $FH ;
     exit 0 ;
 }
 
-__END__
 =encoding utf8
 =head1
 
 コマンド
 
-  $0 datafile
-  $0 < datafile
-  cat datafile | $0
+  $0 datafile 
+  $0 < datafile 
+  cat datafile | $0 
 
 オプションに関して
+ 
+    -= : 先頭行をヘッダ(列名の並びなどでありデータでは無い)と見なして処理
+    -e : データ行の空行を数えない
+    -y 数値範囲 : 頻度が指定回数のもののみ出力。例 -y 1..3 なら3以下。 3.. なら3以上。2,4,6..8 なら2と4と6,7,8。
+ 
+    -f : 出現数で整列する    -fr なら逆順にする
+    -k : キー文字列で整列する    -kr なら逆順にする
+    -n : キー文字列を数と見なして整列する    -nr なら逆順にする
+    -r : 上記を逆順にする。
 
-    -= ならば、ヘッダがあると見なして処理
-    -e ならで空文字列を -e に続く文字列で置換する。
-    -E ならば空行を数えない
-    -W ならば空白文字だけで構成された行を数えない
+    -s : 累和を出力
+    -% : データ件数全体に対する割合を出力
+    -1 : 個数を出力しない。出現したキー文字列のみ出力。
 
-    -n なら出現数で整列する    -nr なら逆順にする
-    -k ならキー文字列で整列する    -kr なら逆順にする
-    -K ならキー文字列を数と見なして整列する    -Kr なら逆順にする
+    -l ファイル名 : 個数を数える文字列の対象を含んだファイル名を指定する。出力順序がファイルの各行に記載の順序になる。
+    -q : 最後の二次情報を出力しない。
 
-    -1 なら個数を表示しない。出現したキー文字列のみ表示。
+その他: 
 
-    -s で累和を表示
-    -S で合計の行数を表示する。
-
-    -d オプションにより、2個以上のもののみを残す。
-    -u オプションにより、1個のもののみを残す。
-
-その他:
-
-    Ctrl+C により、それまで数えた結果が、すぐに標準出力に書き出されて、終了する。
+    Ctrl+C により、途中経過を出力したりする。何度も押すと終了する。
     他、途中どこまで数えたか、1,2,5万、10,20,50万、100,200,500万行に達したことなど、標準エラー出力に出したいが、未実装。
+   
+    -l : プロセス置換 <( ) を使うと便利。
 
 =cut
