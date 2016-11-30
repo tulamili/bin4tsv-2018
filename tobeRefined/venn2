@@ -1,33 +1,56 @@
 #!/usr/bin/perl
 use 5.014 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts 'ek:v01=,:' , \my%o ; 
+use Getopt::Std ; getopts 'ek:v013=,:' , \my%o ; 
 use Term::ANSIColor qw/:constants color/ ; $Term::ANSIColor::AUTORESET = 1 ; 
 
-&procBeginFlags ;
+sub AnotherTotal ( $ ) ; 
+sub bitSubtotal ( $ ) ; 
+sub procBeginFlags ( ) ;
+sub procFlags ( $ ) ;
+sub takeKeys ( $ ) ; 
+sub appearbits ( @ ) ;
+sub main ( ) ; 
 
-my @keyslist ; 
-for ( @ARGV ) { 
-    next if &procFlags ( $_ ) ; 
-    push @keyslist , &takeKeys ( $_ ) ;     
-    #print join ", " , @{ $keyslist[$#keyslist]} , "\n" ;
-}
-
-my $appearRH = & appearbits ( @keyslist ) ; 
-my @b2 = &bitSubtotal ( $appearRH ) ; # (0) x 2**2 ;
-my $b3 ; 
-$b3 = &AnotherTotal ( $appearRH ) if $o{v} ; 
-print join ("\t",qw/AB=10 AB=11 AB=01/) , "\n" ; 
-print join ("\t",@b2[1,3,2]) , "\n" ; 
-
-
-exit 0 if ! $o{v} ;
-for (1,3,2) {
-	print CYAN [qw/AB=10 AB=01 AB=11/] -> [$_ -1 ] ; print "\n" ;
-	print eval{ join ( ", " , @{ $b3->[$_] }  )  }, "\n" ; 
-}
+procBeginFlags ( ) ; 
+main () ; 
 exit 0 ;
 
-sub AnotherTotal ($) { 
+sub main ( ) { 
+    my @keyslist ; 
+
+    do { *STDOUT = *STDERR ; HELP_MESSAGE () } unless @ARGV ;
+
+    for ( @ARGV ) { 
+        next if procFlags ( $_ ) ; 
+        push @keyslist , takeKeys ( $_ ) ;     
+        #print join ", " , @{ $keyslist[$#keyslist]} , "\n" ;
+    }
+
+    my $appearRH = appearbits ( @keyslist ) ; 
+    my @b2 = bitSubtotal ( $appearRH ) ; # (0) x 2**2 ;
+    my $b3 ; 
+    $b3 = AnotherTotal ( $appearRH ) if $o{v} ; 
+
+    if ( $o{3} ) { 
+        print join ("\t",qw/AB=10 AB=11 AB=01/) , "\n" ; 
+        print join ("\t",@b2[1,3,2]) , "\n" ; 
+    }
+    else { 
+        print join ( "\t", qw/ AB=10 AB=11 AB=01 IOU / ) , "\n" ; 
+        print join ( "\t" , @b2[1,3,2] , $b2[3] / ($b2[1]+$b2[2]+$b2[3]) ) , "\n" ; 
+    }
+
+    exit 0 if ! $o{v} ;
+
+    #  ベン図における3個の小領域の、各元を出力する。
+    for (1,3,2) {
+    	print CYAN [qw/AB=10 AB=01 AB=11/] -> [ $_ - 1 ] ; print "\n" ;
+    	print eval{ join ( ", " , @{ $b3->[$_] }  )  }, "\n" ; 
+    }
+} 
+
+
+sub AnotherTotal ( $ ) { 
 	my @kBP  ; 
 	for ( keys %{$_[0]} ) { 
 		my $p =  $_[0]->{$_} ;
@@ -37,7 +60,7 @@ sub AnotherTotal ($) {
 }
 
 # BIT SUBTOTAL 
-sub bitSubtotal ($) { 
+sub bitSubtotal ( $ ) { 
 	my @B = (0) x 2**2  ;
 	for ( values %{$_[0]} ) { $B[$_] ++ } ; 
 	return @B  ;
@@ -46,7 +69,7 @@ sub bitSubtotal ($) {
 
 # 現れたキー文字列のそれぞれについて、第xファイルに現れたら、2進数の下からx桁目を1にする。
 
-sub appearbits {
+sub appearbits ( @ ) {
     my $bw = 1 ; 
     my %app ; 
     for ( @_ ) { 
@@ -60,7 +83,7 @@ sub appearbits {
 
 # ファイルハンドルから、$o{k}のキーに従って、キーを取り出す。
 
-sub takeKeys ($) {
+sub takeKeys ( $ ) {
     my %keys ; 
     open my $fh , $_[0] or die "File $_ does not open. ; $!" ;
     print YELLOW $_[0], "\t" , $o{k}, "\n"  if $o{v} ;
@@ -78,7 +101,7 @@ sub takeKeys ($) {
 
 # コマンドラインの引数で - で始まるものの処理
 
-sub procFlags ($) { 
+sub procFlags ( $ ) { 
     state $kflag = 0 ; 
     if ( $kflag ) { 
         $o{k} = $_[0] ; 
@@ -100,24 +123,26 @@ sub procFlags ($) {
 
 # まず最初の方のオプションの処理
 
-sub procBeginFlags { 
+sub procBeginFlags ( ) { 
     $o{k} //= 1 ;
     $o{'='} = 1 if $o{1} ; 
     $o{','} = do { $o{','} //= "\t" ; eval qq[qq[$o{','}]] } ; 
 }
 
 
-# --help ( Getopt::Std に依存 ) 
-
-sub VERSION_MESSAGE {
-	while ( <DATA> ){
-		print $_ if s/^=head1$// .. s/^=cut$// ; 
-	}
-	exit 0 ;
+# ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+    }
+    close $FH ;
+    exit 0 ;
 }
-
-__END__ 
-
 =encoding utf8
 =head1
     
@@ -133,14 +158,20 @@ __END__
     -e   :  処理対象の文字列が 空文字列(長さ0) でも、処理対象とする。ただし、該当行が存在しないときは、-eにも関わらず処理しない。
     -v   : 処理した対象について詳しい情報を表示する。(主にデバグ用。)
     -=   :  1行目を処理対象にしない。
-    -1   :   -= と同様。
     -0   :  1行目から処理対象にする。
-
+    -1   :   -= と同様。
+    -3   :  IOU (Intersectoin Over Union) を出力しない。
     -, str : 入力の区切り文字の指定。未指定なら、タブ文字になる。
 注意点:
 	入力ファイルは、タブ区切りを前提としている。
 	空行は、1列ではなくて、タブで区切ったフィールド(セル)の個数が0個とみなされてしまう。
 
 関連するコマンド: 
-    venn2-3  venn4 
+    venn3  venn4 
+
+開発上のメモ: 
+    * 特定の列を抽出するという操作は無駄に難しくしているかもしれない。もしくは、inarrow のような仕組みが必要。
+    * venn4 と比較できる操作が出来る様にしたい。
+    * -L で、-v でコンマ区切り横に並べていたのを縦に並べたい。
+
 =cut
