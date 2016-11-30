@@ -1,150 +1,212 @@
 #!/usr/bin/perl
-use 5.014 ; use strict ; use warnings ;# confirmed on 5.011 5.014 5.018
-use Getopt::Std ; getopts "n:mz=" , \my%o ;
-use PerlIO::gzip ; #    my $lib="PerlIO::gzip" ; eval "use $lib;1" or die "Coudn't use $lib though \$o{z} is specified." if $o{z} ;
-use List::Util qw/max min maxstr minstr/ ;
-use List::MoreUtils qw/all firstval pairwise uniq apply part/ ;
-use POSIX qw/atof strtod/;
+
+#  colsummary : TSVまたはCSVファイルの各列の値の様子を表示する。とても便利。
+#   2015/05/11 - 2016/07/05 , Shimono Toshiyuki @ Uhuru. Corporation in Tokyo.
+
+use 5.001 ; use strict ; use warnings ; # also confirmed on 5.011 5.014 5.018  
+use autodie qw [ open ] ; 
+use Getopt::Std ; getopts "g:mz=,:!" , \my %o ;
+use List::Util qw/max min maxstr minstr/ ; 
+use POSIX qw/strtod/;
 use Scalar::Util qw/looks_like_number/;
-use Term::ANSIColor qw/:constants color/ ; $Term::ANSIColor::AUTORESET = 1 ;
-use PerlIO::gzip ;
+use Term::ANSIColor qw/:constants color/ ; $Term::ANSIColor::AUTORESET = 1 ; 
+use FindBin qw [ $Script ] ; 
+eval "use PerlIO::gzip;1" or die "Can't import PerlIO::gzip despite -z instruction. ($Script)\n" if $o{z} ; 
 
-# 全体的に使う変数
-my @ecoldc ;  # $ecoldc[列番号-1]{データ値} = 度数 となる。
-my ( $maxcolNum , $headStr , @colnames ) = 0  ;
-my $intflg ;
+sub choreHeader ( ) ; # 引数の処理をする
+sub main ( ) ; 
 
-&choreHeader ;
-while (1) {
-    $SIG{INT}=sub{$intflg=1} ;
-    &procReading ;
-    &procOutput ;
-    last if ! @ARGV ; # $intflg ;
-}
+choreHeader ; 
+main ; 
 exit 0 ;
 
-## 主要な処理パーツ
-sub choreHeader {
-    $o{n} = 6 if ( ! defined $o{n} ) ;
-    $| = 1 ;
+sub eachFile ( ) ; 
+sub takeFH ( ) ; # 適切にファイルハンドルを取得する。
+sub colnames ( $ ) ; # ヘッダ行から列名を取り出す。ただし、 -= が指定された場合
+sub colValCnt ( $$ ) ; # 各列の値の分布を取り出す。引数は $FH と $colvals 。 $colvals は中を変更される。返値は $maxCols 
+sub colOutput ( $$ ) ; # $colvals->[列番] と 列名を 渡す。そして、その中身が表示される。
+sub RangeStr ( $$ ) ; # 2個の変数を .. で結んで表示。その2個が同じなら、その同じ値を1個だけ表示。
+sub minmaxstr ( $ ) ; # 配列参照から、最小値最大値を取り出す 
+sub MultSpec ( $$ ) ; 
+sub aveft ( $$ ) ; # 各列の平均値を計算する処理をする。
+
+
+sub choreHeader ( ) { 
+    $o{','} = do { $o{','} //= "\t" ; eval qq[qq[$o{','}]] } ;
+    $o{g} = 6 if ( ! defined $o{g} ) ;
+    $| = 1 if $o{'!'} ;
 }
 
-sub procReading {
-    my $fh ;
-    if( @ARGV ) {
-        my $fn = shift @ARGV ;
-        print CYAN "$fn\t" , scalar localtime , "\n" ;
-        open $fh, "<"  , $fn or warn "File `$fn' does not open." and return ;
-    } else {
-        $fh = *STDIN ;  print RED "stdin\t" , scalar localtime , "\n"  ;
+sub main ( ) { 
+    while (1) { 
+        eachFile ; 
+        last if ! @ARGV ; 
+        print "\n" ; # ファイル毎に空行を入れる。
     }
-    binmode $fh , ":gzip(gzip)" if $o{z}  ;
-    if( $o{'='} ) {
-        $headStr = <$fh> ; chomp $headStr ;
-        @colnames = split /\t/ , $headStr ;
+}
+
+sub eachFile ( ) {
+    my $FH = takeFH  ; 
+    my @colnames = colnames $FH if $o{'='} ; 
+    my $maxCols = colValCnt $FH, my $colvals ; #my $colvals ; 各列の各データ値の度数を集計;$colvals->[列番-1]{データ値}=度数 
+    close $FH  ;
+
+    for ( 0 .. $maxCols - 1  ) { 
+        colOutput $colvals->[ $_ ] , $colnames[$_] ; 
     }
+}
 
-    #my $intflg ;
-    #$SIG{INT}=sub{$intflg=1} ;
+sub takeFH ( ) { 
+    my $FH ; 
+    if ( @ARGV ) { 
+        my $fn = shift @ARGV ;  # <-- -
+        print BRIGHT_CYAN "$fn\t" , hhmmss () , "\t" ; 
+        open $FH, "<"  , $fn ; 
+    } 
+    else {
+        $FH = * STDIN ;  
+        print RED "stdin\t" , hhmmss () , "\t"  ; 
+    }    
+    binmode $FH , ":gzip(gzip)" if $o{z} ; 
+    return $FH ; 
+}
 
-    while ( <$fh> ) {
-        chomp ;
-        my @flds = split /\t/ , $_ , -1 ;  # <- ちゃんと最大長までとりだすのに重要(-1)
-        my $colNum = scalar @flds ;
-        pairwise { $ecoldc[$a]{$b}++  } @{[0 .. $colNum - 1 ]} , @flds ; # 各列の各データ値の度数を集計
-        $maxcolNum = $colNum if $maxcolNum < $colNum ;
+sub colnames ( $ ) { 
+    my $FH = $_[0] ; 
+    my $headStr = <$FH> ; 
+    $headStr //= '' ; # 入力か0行だったときの対策
+    chomp $headStr ;  
+    return split /$o{','}/ , $headStr ;
+}
+
+sub colValCnt ( $$ ) { 
+    my $intflg ; 
+    $SIG{INT} = sub { $intflg = 1 } ; 
+    my $maxCols = 0 ;
+    my $FH = $_[0] ; 
+    while ( <$FH> ) { 
+        chomp ; 
+        my @F = split /$o{','}/ , $_ , -1 ; 
+        $_[1] -> [ $_ ] { $F[$_] } ++ for 0 .. $#F ; # 各列の各データ値の度数を集計
+        $maxCols = @F if $maxCols < @F ; 
         last if $intflg ;
     }
-    close $fh   ;
-    #return  if ! @ARGV ;
-    #return if $intflg ;
+    print BRIGHT_CYAN $. , $intflg ? '+' : '' ,  "\t" , hhmmss () , "\n" ;
+    return $maxCols ;
 }
-sub procOutput {
-    for ( 0 .. $maxcolNum - 1  ) {
-        my %thash = %{$ecoldc[$_]} ;  # 各列について、値の度数のハッシュをここで格納。
-        my @vals  = keys %thash ;  # その列で1回以上出現した具体的なデータ値を可能。
-        my @skeys = splice @{[ sort{ $thash{$b}<=>$thash{$a} } @vals ]} , 0, $o{n} ;
 
-        print $_ + 1 . "\t" ;  ## (1) 列番号の表示1から
-        print GREEN BOLD scalar @vals , "\t" ;## (2) 何通りの値が出現したかを表示
-        print BRIGHT_BLUE & aveft( \%thash , \@vals ) , "\t"  if ( ! $o{m} ) ;  ## (3) 平均値の表示
-        print BRIGHT_YELLOW $colnames[$_]//($_+1), "\t" ; ## (4) 列の名前(列名)を表示
-        print BRIGHT_WHITE join ', ', & minmaxstr ( \@vals ) ;  ## (5) 値の最大と最小を取り出す。
-        print "\t" ;
-        print join ', ' , @skeys ; ## (6)  具体的な値の表示 (出現度数の多い順に $o{n} 個 )
-        my %cct; $cct{$_}++  for( values %thash ); # 度数のそのまた度数を格納するための変数
-        my @kcct =  sort {$b<=>$a} keys %cct   ;
+sub colOutput ( $$ ) { 
 
-        print "\t" ;
-        print GREEN join ', ' , MultSpec ( \@kcct, \%cct)  ;  ## (7) テール度数の分布
-        my @kc2 = splice @kcct , -min(  $o{n} ,$#kcct+1 ) ; # <- tricky!
-        print GREEN (@kcct? '..' : @kc2? ', ' : '' ) ;  ## (7) 中点をどうするか
-        print GREEN join ', ' , MultSpec ( \@kc2, \%cct)  ;  ## (7) テール度数の分布
-        print "\n" ;
-    }
+    my %thash = %{ $_[0] } ; #$colvals -> [$_] } ;  # 各列について、値の度数のハッシュをここで格納。
+    my @vals  = keys %thash ;  # その列で1回以上出現した具体的なデータ値を可能。
+    my @skeys = splice @{[ sort{ $thash{$b} <=> $thash{$a} } @vals ]} , 0, $o{g} ; #高速化の対象か? 
+    
+    my %cct ; $cct{$_} ++ foreach values %thash ; # 度数のそのまた度数を格納するための変数
+    my @kcct =  sort {$b <=> $a} keys %cct ;
+    my @kcct1 = splice @kcct , 0,  min(  $o{g} ,$#kcct+1 ) ; # <- tricky! 
+    my @kcct2 = splice @kcct , - min(  $o{g} ,$#kcct+1 ) ; # <- tricky! 
+
+    ## (1) 列番号の表示1から
+    print $_ + 1 . "\t" ; 
+    ## (2) 何通りの値が出現したかを表示
+    print GREEN BOLD scalar @vals , "\t" ;
+    ## (3) 平均値の表示 (加算と減算の関係を把握する目的があるので、値が無いところは0と見なす)
+    print BRIGHT_BLUE aveft( \%thash , \@vals ) , "\t"  unless $o{m}  ;  
+    ## (4) 列の名前(列名)を表示
+    print BRIGHT_YELLOW $_[1] //($_+1), "\t" ; 
+    ## (5) 値の最大と最小を取り出す。
+    print BRIGHT_WHITE join ', ', minmaxstr \@vals ;  
+    print "\t" ; 
+    ## (6)  具体的な値の表示 (出現度数の多い順に $o{g} 個 ) 
+    print join ', ' , @skeys ; 
+    print "\t" ;
+    ## (7) テール度数の分布
+    print BRIGHT_GREEN join ', ' , MultSpec \@kcct1, \%cct ;  
+    ## (7) 中点(なかてん)をどうするか
+    print GREEN (@kcct2? @kcct? '..' : ', ' : '' ) ;  
+    ## (7) テール度数の分布
+    print GREEN join ', ' , MultSpec \@kcct2, \%cct  ;  
+    print "\n" ;
+
 }
+
 ## 汎用化可能な関数
 
-sub RangeStr ($$) {
+sub part (&@) {
+    my ($code, @list) = @_;
+    my @parts;
+    push @{ $parts[ $code->($_) ] }, $_  foreach @list;
+    return @parts;
+} # この関数は List::MoreUtils からのコピー
+
+sub RangeStr ( $$ ) {
     return $_[0] eq $_[1] ? "$_[0]" : "$_[0]..$_[1]" ; # 2個の数or文字列から 1..2のような文字列を生成
 }
-sub minmaxstr {
-    my @gps = part { $_ eq q// ? 0 : looks_like_number $_ ? 1 : 2 } @{$_[0]} ;
-    my @ostr ;
-    push @ostr, '' if $gps[0] ;  # 空文字列があるときの処理
-    push @ostr, &RangeStr( min(@{$gps[1]}), max(@{$gps[1]}) ) if $gps[1] ;  # 数に見える値があるときの処理
-    push @ostr, &RangeStr( minstr(@{$gps[2]}), maxstr(@{$gps[2]}) ) if $gps[2] ; # 数に見えない値があるときの処理
-    return @ostr;
-} ;
+
+sub minmaxstr ( $ ) {
+    my @gps = part { $_ eq q// ? 0 : looks_like_number $_ ? 1 : 2 } @{$_[0]} ; 
+    my @ostr ; 
+    push @ostr, '' if $gps[0] ;  # 空文字列があるときの処理  
+    push @ostr, RangeStr( min(@{$gps[1]}), max(@{$gps[1]}) ) if $gps[1] ;  # 数に見える値があるときの処理 
+    push @ostr, RangeStr( minstr(@{$gps[2]}), maxstr(@{$gps[2]}) ) if $gps[2] ; # 数に見えない値があるときの処理 
+    return @ostr; 
+} ; 
 
 # 度数(頻出上位の個数及びテールの様子) について表示文字列を準備する(..の前後で2回呼び出される)
-sub  MultSpec  {
-    my ($p_kc,$p_ccount)  =  @_;
+sub  MultSpec ( $$ ) {
+    my ( $p_kc , $p_ccount )  =  @_;
     my @ostr ;
-    my $c=0 ;
-    while ( my $t  = shift @$p_kc )  {
-        $c++ ;
-        push @ostr , $t if ( $p_ccount->{$t} == 1 ) ;
-        push @ostr , $t.'(x'.$p_ccount->{$t} .')' if ( $p_ccount->{$t} >= 2 ) ;
-        last if ( $c >= $o{n} ) ;
-    }
+    my $c=0 ; 
+    while ( my $t  = shift @$p_kc )  { 
+        $c++ ; 
+        push @ostr , $t if ( $p_ccount->{$t} == 1 ) ; 
+        push @ostr , $t.'(x'.$p_ccount->{$t} .')' if ( $p_ccount->{$t} >= 2 ) ; 
+        last if ( $c >= $o{g} ) ;
+    } 
     return @ostr ;
 } ;
 
 # 平均値を計算する処理をする。
-sub aveft{
-    my ($rHash,$rKeys)=@_ ;
-    my ($tval, $freq, $asum, $afreq ) ;
-    for( @{$rKeys} ) {
+sub aveft ( $$ ) {
+    my ($rHash,$rKeys) = @_ ;
+    my ($tval, $freq, $asum, $afreq ) ; 
+    for( @{$rKeys} ) { 
         ( my $num = $_ ) =~ s/(\d),/$1/g ; #s/,//g ; # 3桁区切りに現れる区切りコンマを消去する
-        $tval = POSIX::strtod ( $num ) ;
-        $freq = $rHash->{ $_ }  ;
-        $asum += $tval * $freq ;
-        $afreq += $freq ;
+        $tval = POSIX::strtod ( $num ) ; 
+        $freq = $rHash->{ $_ }  ; 
+        $asum += $tval * $freq ; 
+        $afreq += $freq ; 
     }
    return sprintf '%5.3f',$asum/$afreq;
     #return "$asum / $afreq " ;
-
+    
 }
 
-# --helpに応対する処理
-sub VERSION_MESSAGE{
-    $0 =~ s/.*\///g ;
-    while ( <DATA> ) {
-        print $_ if s/^=head1// .. s/^=cut// ;
+sub hhmmss ( ) { 
+    my @f = localtime  ; 
+    print return sprintf "%02d:%02d:%02d" , @f[2,1,0] ; 
+}
+
+## ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
     }
+    close $FH ;
     exit 0 ;
 }
-
-__END__
-
 =encoding utf8
 
-=head1 colsummary.pl
+=head1 $0 
 
  データファイル(TSV形式、一行目はヘッダ)について、各列の有用な情報を出力する。
 
-[出力項目]
+ 出力項目:
 
  1. 列番号
  2. 異なり数(各列に異なる値が何個出現したか)
@@ -153,11 +215,17 @@ __END__
  5. 値の範囲
  6. 値の頻出ランキング
  7. 頻出上位と下位についての出現回数
-[オプション]
 
-       -=   ヘッダが存在する場合は必ず指定すること。そうではない場合は、列名は連番になる。
-       -n 6   具体的な値を何個表示させるか指定する。
-       -m   平均値を表示しない。(平均値は strtod を使っている。)
+ オプション:
+　
+   -= ;  ヘッダが存在する場合は必ず指定すること。そうはない場合は、列名は連番になる。
+   -g 6 ;  具体的な値を何個表示させるか指定する。
+   -m  ; 平均値を表示しない。(平均値は strtod を使っている。) 
 
+   -, str : 区切り文字をタブ文字ではなくて、 str  に変更。
+   -z ; 入力は gzip 圧縮されていることを仮定。
+   
+  --help : この $0 のヘルプメッセージを出す。  perldoc -t $0 | cat でもほぼ同じ。
+  --help opt : オプションのみのヘルプを出す。opt以外でも options と先頭が1文字以上一致すれば良い。
 
 =cut
