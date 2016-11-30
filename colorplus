@@ -1,96 +1,168 @@
 #!/usr/bin/perl
-#use 5.014 ; use strict ; use warnings ; # 5.011 5.014 で確認済み
-use Getopt::Std ; getopts "e:l:t:v034,:" , \my%o ;
-use Term::ANSIColor qw/color colored colorstrip/ ;
-$o{','} //= "\t" ;
-$| = 1 if $o{v} ;
-my %except ; $except {$_} =1 for split /,/ , $o{e}//'' ;
-while ( <> ) {
-	print $_ if $except{$.} ; # 色情報の消去
-	$_ = colorstrip ($_) if $o{0} ;
- 	$_ = &ColorDigits ($_)  if $o{3} || $o{4} ;
- 	$_ = &ColorTabbing ($_,$o{t})  if $o{t} ;
- 	$_ = &ColorLines ($_,$o{t})  if $o{l} ;
- 	print $_ ;
-}
+
+## colorplus.pl
+##  2015-06-18 下野寿之
+
+use 5.001 ; use strict ; use warnings ; # colorstripを使うには、5.014が必要だったが、古い環境を考慮して 5.001とした。 
+use Getopt::Std ; getopts 'b:e:l:s:t:!0134,:^:' , \my%o ; 
+use Term::ANSIColor qw[ color ] ;
+
+sub ColorNullify ($) ; # 色を消去
+sub ColorDigits ($) ; ## 数字に色をつける。
+sub ColorRegex ($) ; # 特定の正規表現に色を付ける。
+sub ColorLines ($$) ; # 指定された数の行とに、青い背景色をつける。
+sub ColorTabbing ($$) ; # 指定された数の列ごとに、背景色
+sub ColorHead ( $$ ) ; # 各行の先頭の指定文字数に色を付ける
+sub main () ; 
+
+$o{','} //= "\t" ; 
+$| = 1 if $o{'!'} ;   
+my %except ; # 処理をしない(そのままにする)行
+main ; 
 exit 0 ;
 
-# 指定された数の列のタブごとに、青い背景色をつける。
-sub ColorLines ($$) {
-    $. % $o{l} == 1 ? colored ( $_ , "on_blue" ) : colored ( $_ , "on_black" ) ;
+sub main () {
+	$except {$_} = 1 for split /,/ , $o{e}//'' ;
+	while ( <> ) { 
+		do { print $_ ; next } if $except{$.} ; 
+		$_ = ColorNullify $_         if $o{0} ; # 色情報の消去
+	 	$_ = ColorDigits  $_         if $o{3} || $o{4} ; 
+	 	$_ = ColorRegex $_           if defined $o{s} ; 
+	 	$_ = ColorLines   $_ , $o{l} if $o{l} ; 
+	 	$_ = ColorTabbing $_ , $o{t} if $o{t} ; 
+        $_ = ColorHead $_ , $o{'^'} if defined $o{'^'} ; 
+	 	print $_ ;
+	}
 }
 
-sub ColorTabbing ($$) {
+sub ColorRegex ($) { 
+	my $ADD = color ( $o{b} // 'red' ) ; 
+	my $RESET = color 'reset'  ;
+	$_[0] =~ s/($o{s})/$ADD$1$RESET/g  ;
+	$_[0] ;
+}
+
+sub ColorNullify ($) { 
+	 $_[0] =~ s{ \e\[ [\d;]* m }{}xmsg ; ## ここは Term::ANSIColor の最近のバージョンからコピペ。
+	 $_[0] ; 
+}
+
+sub ColorLines ($$) { 
+    $. % $_[1] == 1 ? color( $o{b} // 'on_blue') . $_[0] . color('reset') : $_[0] ; 
+}
+
+sub ColorTabbing ($$) { 
 	chomp ;
 	my @F = split /$o{','}/ , $_[0]  ;
-	my @out  ;
-	for ( 0..scalar @F -1){
-		 push @out,  color( ['on_black','on_blue']->[int($_/$_[1])%2]  ) . $F[$_]  ;
-	}
+	my @out  ;  
+	for ( 0 .. $#F ){
+        if ( $_ % $_[1] == 0 && $_ > 0 )  { 
+            if ( $_ %  ( $_[1] *2 ) == 0 ) { $F[$_] = color('reset') . $F[$_] } 
+            else { $F[$_] = color( $o{b} // 'on_blue' ) . $F[$_] } 
+        }
+        # $F[$_] = color('reset') . $F[$_] if $_ %$_[1] == 0 ;
+		push @out, $F[$_] ; # color( ['on_black','on_blue']->[int($_/$_[1])%2]  ) . $F[$_]  ;
+	} 
 	return join ($o{','},@out).color('reset')."\n" ;
 }
 
+sub ColorHead ($$)  { 
+    use Encode qw[ encode_utf8 decode_utf8 ] ; 
+    my $line = decode_utf8  $_[0] ; 
+    my $n = $_[1] ; 
+
+    my $head = substr $line , 0 , $o{'^'} , '' ; 
+    $line = color ( 'on_bright_black' ) . $head . color ( 'reset' ) . $line  ;
+    return encode_utf8 $line ;
+}
+
+
 ## 数字に色をつける。
-sub ColorDigits ($) {
-	my @accum = &wellSplit ( $_[0] ) ;
-	my $outStr = join '' , map { &wellPrint ($_) } @accum ;
-	return $outStr ;
+sub ColorDigits ($) { 
+	my @accum = &wellSplit ( $_[0] ) ; 
+	my $outStr = join '' , map { &wellPrint ($_) } @accum ; 
+	return $outStr ; 
 }
 
 sub wellPrint ($){
-	my $outstr = '' ;
+	my $outstr = '' ; 
 	sub loc ($) {
         my $x=$_[0]-1;
         my $l = $o{3} ? 3 : $o{4} ? 4 : 5 ; # 5は使わないだろう
-        ($x-($x% $l ))/$l %3
-        } ;
-	my $str = $_[0] ;
+        ($x-($x% $l ))/$l %3 
+        } ; 
+	my $str = $_[0] ; 
 	if ( $str !~ /^\d/ ) {
-		$outstr .=  $_ ;
+		$outstr .=  $_ ; 
 		return $outstr ;
 	}
-	my @wStr = split //, $str ,0  ;
-	for ( -scalar @wStr .. -1 ) {
+	my @wStr = split //, $str ,0  ; 
+	for ( -scalar @wStr .. -1 ) { 
 		$outstr .= ${[color('cyan'),color('green'),color('yellow')]} [ &loc (-$_) ] . $wStr[$_] ;
 	}
-	return $outstr.color('white') ;
+	return $outstr.color('reset') ;
 }
 
-sub wellSplit ($)  {
+sub wellSplit ($)  { 
 	my @wholeStr = split // , $_[0] , -1 ;
 	my @accum ;
-	my $tmpstr = '' ;
-	my $dflag = 0 ;
-	for ( 0 .. scalar @wholeStr -1 ) {
+	my $tmpstr = '' ;  
+	my $dflag = 0 ; 
+	for ( 0 .. scalar @wholeStr -1 ) { 
 		my $c = $wholeStr [ $_ ] ;
-		my $dflag0 = $c ge "0" & $c le "9" ;
-		if ( $dflag0 xor $dflag ) {
-		  	push @accum , $tmpstr  if $_ ;
+		my $dflag0 = $c ge "0" & $c le "9" ; 
+		if ( $dflag0 xor $dflag ) { 
+		  	push @accum , $tmpstr  if $_ ; 
 		  	$tmpstr = $c ;
-	  	$dflag = $dflag0 ;
-		}
-		else {
-		  	$tmpstr .= $c ;
+	  	$dflag = $dflag0 ; 
+		} 
+		else { 
+		  	$tmpstr .= $c ;  
 		}
 	}
 	push @accum, $tmpstr ;
-	return @accum ;
+	return @accum ; 
+}
+## ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+    }
+    close $FH ;
+    exit 0 ;
 }
 
-
-__END__
 =encoding utf8
 
-=head1 color.pl
+=head1
+
+  $0
 
  色( Term::ANSIColor ) についてのいろいろなユーティリティー
 
- -0 で入力の色情報を消去する。
- -3 数を3桁ごとに塗り分ける
- -4 数を4桁ごとに塗り分ける
- -e linenumbers   コンマ(,)区切りの数を並べると、その行については表示はするが何もしない。
+ -0 で入力から着色を除去する。普通のテキストになる。
+ -3 数を下位から3桁ごとに塗り分ける
+ -4 数を下位から4桁ごとに塗り分ける。
+ -b 追加する色を指定(-lと-tと-sの場合)。背景色を on_blue 意外にしたいときなどに設定。on_bright_yellow など。
+ -e linenumbers   コンマ(,)区切りの数を並べると、それにより指定された行については表示はするが着色などは何もしない。
  -l num  :  num行周期で最初の行に背景を青くする。
- -t num タブ区切り num 桁ごとに青の背景色をつける。
- -v 処理結果をすぐに書き出す。バッファに貯めない。
+ -s str により、str を正規表現と見なして、それにマッチする文字列を赤色で着色。
+ -t num タブ区切り num 列ごとに青の背景色をつける。
+ -! 処理結果をすぐに書き出す。バッファに貯めない。
+ -, str : 列の塗り分けをする際に、列の区切りを str で指定する。未指定なら、タブ文字。
+ -^ num : 各行の先頭の num 文字の背景を薄い黒で着色する。
 
+ 
+  --help : この $0 のヘルプメッセージを出す。  perldoc -t $0 | cat でもほぼ同じ。
+  --help opt : オプションのみのヘルプを出す。opt以外でも options と先頭が1文字以上一致すれば良い。
+
+
+ 開発上のメモ: 
+  コマンドのウィンドウ内で表示が下端に達すると、 -l の表示がおかしくなる場合がある。
 =cut
+
