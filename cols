@@ -1,8 +1,10 @@
 #!/usr/bin/perl
 use 5.011 ; use strict ; use warnings ;
-use Getopt::Std ; getopts "d:e:h:np:rt:,:=" , \my %o ; 
+use Getopt::Std ; getopts "d:e:h:np:rt:,:=!" , \my %o ; 
 #use List::MoreUtils qw/any none/ ; 
 use Encode qw/decode_utf8/ ; 
+
+$| = 1 if $o{'!'} ; 
 
 my %O ; # 列の番号の配列を格納する。
  # @{$O{p}} 出力するよう指定した列の番号
@@ -90,19 +92,19 @@ sub procOptNums ($) { # まず コンマで分割, # 次に .. を展開する�
      
 	return @g ; 
 }
-
-# ヘルプの表示
+## ヘルプの扱い
 sub VERSION_MESSAGE {}
-sub HELP_MESSAGE{
-    $0=~s|.*/|| ; $ARGV[1] //= '' ;
-    while(<DATA>){
-        s/\$0/$0/g ;
-        print $_ if $ARGV[1] =~ /opt/ ? m/^\ +\-/ : s/^=head1// .. s/^=cut// ; 
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
     }
+    close $FH ;
     exit 0 ;
 }
-
-__END__
 
 =encoding utf8
 
@@ -143,6 +145,10 @@ __END__
     -, "" もしくは -, ''  入力を1文字単位で区切って処理する。(-, と ''または""の間は1個以上の空白が必要) 固定長の時に便利。
          
     -n  : 列に番号を付与する。
+
+
+  --help : この $0 のヘルプメッセージを出す。  perldoc -t $0 | cat でもほぼ同じ。
+  --help opt : オプションのみのヘルプを出す。opt以外でも options と先頭が1文字以上一致すれば良い。
 
 このプログラムに求められる要件:
 
