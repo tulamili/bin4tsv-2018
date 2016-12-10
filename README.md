@@ -1,3 +1,8 @@
+Feature : 
+  - A bunch of hacking toolset to handle/analysis/manipulate tabular data files from 
+    the viewpoint of data analysers, complementing the deficiencies of existing softwares
+    such as Excel, R, SQL, python pandas and so on.
+  - Your data analysis project may speed up as fast as 20 times! 
 
 Also see : 
 
@@ -28,3 +33,4 @@ Bugs :
   * Not-hiding potential-bug policy is employed for my software at this moment. 
   
  
+Developing memorandum : 
