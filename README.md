@@ -17,6 +17,12 @@ Deeper concept explanations (still partly) :
 <img src="http://image.slidesharecdn.com/washingtondcb20161214-161118124629/95/a-hacking-toolset-for-big-tabular-files-3-12-638.jpg?cb=1481318116" width=250> 
 <img src="http://image.slidesharecdn.com/washingtondcb20161214-161118124629/95/a-hacking-toolset-for-big-tabular-files-3-20-638.jpg?cb=1481318116" width=250> 
 
+
+
+<img src="http://image.slidesharecdn.com/presen160829-160819005809/95/-11-638.jpg?cb=1472526353" width=250> 
+<img src="http://image.slidesharecdn.com/presen160829-160819005809/95/-18-638.jpg?cb=1472526353" width=250> 
+<img src="http://image.slidesharecdn.com/presen160829-160819005809/95/-33-638.jpg?cb=1472526353" width=250> 
+
 Sofware name : 
   - "bin4tsv" ; my original internal code name, considering the rule of CPAN library naming rule. 
   - "Kabutomushi"  ; my colleagues call so. 
