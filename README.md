@@ -9,8 +9,9 @@ Also see :
 
 
 Sofware name : 
-  - bin4tsv ; my original internal code name, considering the rule of CPAN library naming rule. 
-  - Kabutomushi  ; my colleagues call so. 
+  - "bin4tsv" ; my original internal code name, considering the rule of CPAN library naming rule. 
+  - "Kabutomushi"  ; my colleagues call so. 
+  - Still not fixed, though. 
 
 
 Installation : 
