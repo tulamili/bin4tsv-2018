@@ -14,8 +14,8 @@ Sofware name :
 
 
 Installation : 
-  1-1. Requires Perl 5 installation beforehand. 5.1 is minimum, 5.14 or more is desirable. 
-  1-2. The simplest way to use my software is just copy and paste each of the programs of my software. 
-  1-3. Some of the programs I created requires additional installation of necessary libraries from CPAN. 
+  1. Requires Perl 5 installation beforehand. 5.1 is minimum, 5.14 or more is desirable. 
+  2. The simplest way to use my software is just copy and paste each of the programs of my software. 
+  3. Some of the programs I created requires additional installation of necessary libraries from CPAN. 
        (The error message would show that the additional installation is necessary when you use the program.)
 
