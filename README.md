@@ -3,6 +3,7 @@ Feature :
     the viewpoint of data analysers, complementing the deficiencies of existing softwares
     such as Excel, R, SQL, python pandas and so on.
   - Your data analysis project may speed up as fast as 20 times! 
+  - Command Line Usage is necessary. No need to know Perl, though almost all the program is written in Perl. (If something happens, Perl knowledge is helpful.)
 
 Deeper concept explanations (still partly) : 
 
@@ -19,12 +20,13 @@ Sofware name :
   - Still not fixed, though. 
 
 
+
 Installation : 
   1. Requires Perl 5 installation beforehand. 5.1 is minimum, 5.14 or more is desirable. 
   2. The simplest way to use my software is just copy and paste each of the programs of my software. 
   3. Full installation is downloding the whole and adding the PATH of each of directory where the 
        program files of my software exists. But this may require faliarity of basic command line using knowledge.
-  3. Some of the programs I created requires additional installation of necessary libraries from CPAN. 
+  4. Some of the programs I created requires additional installation of necessary libraries from CPAN. 
        (The error message would show that the additional installation is necessary when you use the program.)
 
 Bugs : 
