@@ -22,3 +22,9 @@ Installation :
   3. Some of the programs I created requires additional installation of necessary libraries from CPAN. 
        (The error message would show that the additional installation is necessary when you use the program.)
 
+Bugs : 
+  * Please report to me if you find some essential bugs. 
+  * At this moment, multiple checking is recommendable. 
+  * Not-hiding potential-bug policy is employed for my software at this moment. 
+  
+ 
