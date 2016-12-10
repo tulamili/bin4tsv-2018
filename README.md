@@ -36,3 +36,5 @@ Bugs :
 Developing memorandum : 
  - You can easily invoke help manual easily by 'command --help' or 'commad --help opt', but everything is yet in Japanese.
     (I am thinking to implement the function of invoking English manual by reading the environment variable or "command --help EN') 
+ - Common options switches desining though the whole program is important. Refining more is neccessary. Recently I have added -@ option to show the ongoing status in the interval of 1e5 or 1e6 lines. 
+ - As many many of my friends say "complete publishing is important to improve my software", but I like to claim that I need to sophistication of my policy of building my software is still necessary beforehand.  Please be patient. It may take more a few months. 
