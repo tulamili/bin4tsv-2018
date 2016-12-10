@@ -8,3 +8,6 @@ Also see :
   http://www.slideshare.net/shimonotoshiyuki/ss-65145461
 
 
+Sofware name : 
+  - bin4tsv ; my original internal code name, considering the rule of CPAN library naming rule. 
+  - Kabutomushi  ; my colleagues call so. 
