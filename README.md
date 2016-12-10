@@ -34,3 +34,5 @@ Bugs :
   
  
 Developing memorandum : 
+ - You can easily invoke help manual easily by 'command --help' or 'commad --help opt', but everything is yet in Japanese.
+    (I am thinking to implement the function of invoking English manual by reading the environment variable or "command --help EN') 
