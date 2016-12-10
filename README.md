@@ -14,6 +14,8 @@ Deeper concept explanations (still partly) :
   http://www.slideshare.net/shimonotoshiyuki/ss-65145461
 
 <img src="http://image.slidesharecdn.com/washingtondcb20161214-161118124629/95/a-hacking-toolset-for-big-tabular-files-3-9-638.jpg?cb=1481318116" width=250> 
+<img src="http://image.slidesharecdn.com/washingtondcb20161214-161118124629/95/a-hacking-toolset-for-big-tabular-files-3-12-638.jpg?cb=1481318116" width=250> 
+<img src="http://image.slidesharecdn.com/washingtondcb20161214-161118124629/95/a-hacking-toolset-for-big-tabular-files-3-20-638.jpg?cb=1481318116" width=250> 
 
 Sofware name : 
   - "bin4tsv" ; my original internal code name, considering the rule of CPAN library naming rule. 
