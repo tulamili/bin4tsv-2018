@@ -37,4 +37,8 @@ Developing memorandum :
  - You can easily invoke help manual easily by 'command --help' or 'commad --help opt', but everything is yet in Japanese.
     (I am thinking to implement the function of invoking English manual by reading the environment variable or "command --help EN') 
  - Common options switches desining though the whole program is important. Refining more is neccessary. Recently I have added -@ option to show the ongoing status in the interval of 1e5 or 1e6 lines. 
- - As many many of my friends say "complete publishing is important to improve my software", but I like to claim that I need to sophistication of my policy of building my software is still necessary beforehand.  Please be patient. It may take more a few months. 
+ - As many many of my friends say "complete publishing is important to improve your software", but I like to claim that I need to sophistication of my policy of building my software is still necessary beforehand.  Please be patient. It may take more a few months. 
+ 
+  - If you can help develop my software, I welcome. If you have business idea, I like to listen your idea. Essentaial advice is always welcome.
+  
+- All is written in Perl. It is fast enough for the purpose of analysis on the big table data files on your HDD/SSD because the reading time is the bottleneck. And Perl is fast enough among other programming languages. Transporting to other language such as C, C++, Go, Python would occur after many steps later.
