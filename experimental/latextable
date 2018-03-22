@@ -1,0 +1,174 @@
+#!/usr/bin/perl 
+use v5.14 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts q['=3:9c:fs:zH] , \my%o ; 
+use utf8 ;
+use Encode qw[ encode_utf8 decode_utf8 ] ;
+use Term::ANSIColor qw [:constants ] ; $Term::ANSIColor::AUTORESET = 1 ;
+
+$o{s} //= "1.000" ; # 表示拡大率
+
+my $colspec = '' ; # LaTeXのtable環境の列指定 
+my @r3 = () ; #  3桁コンマ区切りにして右寄せにしたい列の指定。
+my $angle = $o{9} ? 90 : 0 ; # 全体を回転する場合の指定
+
+my @out ; # 出力刷るような内容
+
+& main ( ) ; 
+exit 0 ; 
+
+
+sub plain2latex ( $ ) { 
+
+    s/(?<=[0-9a-f]{15})[0-9a-f]{49}/../g if $o{H} ; # <-- - 16進数64桁の処理 ; (?<= ) で正規表現の後読み
+
+    # ドル$文字関連
+    s|\G(.*?)\$|$1=\$\$=|g ; # ドル文字の前処理。\Gは文字列の先頭、もしくは修飾子 g がついたパターンマッチングが終了した場所を記憶しておき、そこにマッチ
+
+
+    # LaTeX中で 数式環境を利用するもの
+    s/([\\\Q!~<>\E\x{FF0D}]+)/\$$1\$/g ; # 1. 数式環境に移行して、    ;  \Qと\Eの間はパターンメタ文字の無効化。 
+    s/\\/\\backslash/g ;        # 2. そして、まず先にバックスラッシュに処理をして、後の処理が続く。
+    s/~/\\sim/g;                # チルダ
+    s/\x{FF0D}/\Q\!\!\frac{}{{{}\atop{H}}}\!\!\E/g ;   # 全角ハイフンはその下に、H を小さく書く ; \N{FULLWIDTH HYPHEN-MINUS}
+
+    s/\ /\\scalebox{0.5}[0.5]{\$\\sqcup\$}/g ; # 半角スペースの強調 if $o{z} ; 
+    s/\x{3000}/\\scalebox{1}[0.5]{\$\\sqcup\$}/g  if $o{z} ;  # 全角スペース  は、 -z 指定の場合、皿の形の線が置かれる。\N{IDEOGRAPHIC SPACE}
+
+    #return $_ ;
+    # LaTeX中でバックスラッシュを伴うべき文字の処理 : _%#&  ; ドル文字 $ は最初に前処理、最後に完了処理をしていることに注意。
+    s/(?=[\Q_%#&\E])/\\/g ; # (?= ) で正規表現の先読み
+    s/=\$\$=/\\\$/g ; # ドル文字の処理はここで終わり。
+
+    #return $_ ; 
+    # 半角カナの処理 -- 範囲指定だとずれるので、一文字ずつ処理した。もっと良い方法はあるかも知れない。
+    s/([｡｢｣､･ｦｧ-ｯｰｱ-ﾝﾞﾟ]+)/\\scalebox{0.5}[1]{$1}/g  ; 
+    y/｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ/。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソ/ ; 
+    y/ﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝﾞﾟ/タチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン゛゜/ ;
+
+
+    return $_ ;
+}
+
+sub main ( ) { 
+
+	my $zflag = 0 ; 
+    
+
+	# オプション -3 についての処理
+    @r3 = split /,/, $o{3} , -1  if $o{3} ;
+
+    for ( reverse 0 .. $#r3 ) {     	
+    	splice @r3, $_ , 1 , $1 .. $2 if $r3[$_] =~ m/(\d+)\.\.(\d+)/
+    }
+    grep { $_ -- } @r3 ; 
+
+
+    binmode STDOUT, ":utf8" ;
+    while ( <> ) {
+        $zflag = 1 if m/　/ ; #全角カナのチェック
+
+        #m/%81%40/ and print "XXX" and exit 0 ;
+        $_ = decode_utf8 ($_) ;
+
+        $_ = plain2latex ( $_ ) ;
+
+        chomp ; 
+        my @F = split /\t/ , $_ , -1 ; 
+        splice @F , $o{c} if defined $o{c} ; # 切り取り
+        s/(?<=\d)(?=(\d\d\d)+($|\D))/,/g for @F[ @r3 ] ; # 数値3桁区切りの処理
+
+        grep { $_ = "\\rotatebox{90}{$_}"} @F if $o{q[']} and $. == 1 ; 
+        & beginProc ( scalar @F ) if $. == 1 ;  
+        push @out,  ' ' x 12 , (join ' & ' , @F  ) , "\\\\", "\n" ;
+        push @out,  ' ' x 12 , "\\hline\n" if $o{'='} && $.== 1 ;
+    }
+
+    if ($zflag && ! $o{z} ) { 
+        print STDERR CYAN "Full-width space included. Using '-z' is advisable.\n" ;
+    }
+    & printTail ( ) ; 
+
+    print @out ; 
+
+}
+
+sub beginProc ( $ ) { 
+    my @tmp  = ('l') x ( $o{c} // $_[0] ) ;  # 列指定
+    $tmp [$_] = 'r' for @r3 ; 
+    $colspec = "| " . ( join '' , @tmp ) . "| " ;
+
+    push @out ,  << "END" 
+\\begin{table}
+    \\center
+    \\rotatebox{$angle}{
+    \\scalebox{$o{s}}{
+        \\begin{tabular}{$colspec}
+            \\hline
+END
+;
+}
+
+sub printTail ( ) {
+
+    push @out,  << "END"
+            \\hline
+        \\end{tabular} 
+    }}
+    \\caption{}%
+    \\label{tbl:}%
+\\end{table}
+
+END
+;
+
+}
+
+## ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ;
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+    }
+    close $FH ;
+    exit 0 ;
+}
+
+=encoding utf8
+=head1
+
+コマンド $0 
+
+  標準入力からタブ区切りのデータを読取り、それを LaTeX の表で使えるように変換する。
+
+  下記の作業などを省力化することが目的である。
+    (1) タブ区切りをアンパサンド区切りに変換すること
+    (2) \hline コマンドを書き入れること
+    (3) 数値はコンマ3桁区切りで右詰めにすること
+    (4) 各種記号や半角カナをLaTeXで出力できるようにすること
+    (5) 半角空白と全角空白を目立たせること
+    (6) 全角ハイフンも、全角長音と区別させること
+
+オプション : 
+    -=   ; 標準入力の最初の行は、作りたいテーブルのヘッダであると仮定する。(\hlineの処理に関わる)
+    -c N : 表が幅何列かを明示的に指定する。未指定なら先頭行の列数で判定する。
+    -s N : 出力の拡大率を指定する。未指定なら 1.0。
+    -z   : 全角スペース(UTF8)を、LaTeXの出力結果において、正方形の下半分のような形で可視化する。
+    -3 n[,n][,n].. ;  3桁区切りにして右寄せにしたい列を1始まりで指定する。 
+    -9  : LaTeXで表示させる表の全体を90度左回りに回転させる。
+
+    -H : 便宜上のもの。リリース時に消去。16進の長い文字列を短くする。
+
+    -\'   ; 1行目を左回りに回転する。
+注意点 : 
+  - \caption と \label の中が空白なので、後で書き込む必要がある。
+  - LaTeX の \scalebox コマンドを使うので \usepackage{graphicx} がプリアンブルに必要となる。
+
+ このプログラムの開発上のメモ : 
+   * 3桁区切りにしたい数ではなくて、単に右寄せしたい列の指定をする -r を実装したい。
+   * ドルマークとバックスラッシュの処理は内部処理上でトリッキーだった。正規表現の \Gで解決した。
+
+=cut
