@@ -1,13 +1,15 @@
 #!/usr/bin/perl 
-use v5.14 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts q['=_3:9c:fjs:H] , \my%o ; 
-use utf8 ;
-use Encode qw[ encode_utf8 decode_utf8 ] ;
-use Term::ANSIColor qw [:constants ] ; $Term::ANSIColor::AUTORESET = 1 ;
+use v5.14 ; use strict ; use warnings ; # cpantersのレポートによると、5.14より前はNAだった。
+use Getopt::Std ; getopts q['/:=_0:13:9fjs:w:x:H] , \my%o ; # 5.
+use utf8 ; # v5.6 ~ 
+use Encode qw[ encode_utf8 decode_utf8 ] ; # v5.7 ~ 
+use Term::ANSIColor qw [:constants ] ; $Term::ANSIColor::AUTORESET = 1 ; # v5.6 ~ 
 
 $o{s} //= "1." ; # 表示拡大率  LaTeX displaying magnification efficient.
-
+$o{x} //= "0mm" ; # 大きめのテーブルのセンタリングのために、左右を削り取る長さを指定する。
+my $isep = $o{'/'} // "\t" ; # 入力の区切り文字
 my $colspec = '' ; # LaTeXのtable環境の列指定  LaTeX table environment "column specifier"
+my $rm = $o{0} if defined $o{0} ; # テーブルの値で除去対象となる値の正規表現
 my @r3 = () ; #  3桁コンマ区切りにして右寄せにしたい列の指定。 Which columns are to be decimal being separated every 3 digits.
 my $angle = $o{9} ? 90 : 0 ; # 全体を回転する場合の指定  When -9 is specified, the entire table rotates in 90 degree.
 
@@ -26,7 +28,7 @@ sub plain2latex ( $ ) {
 
 
     # LaTeX中で 数式環境を利用するもの Utilization of math formula env. of LaTeX for some specific characters such as \~!<>.
-    s/([\\\Q!~<>\E\x{FF0D}]+)/\$$1\$/g ; # 1. 数式環境に移行して、    ;  \Qと\Eの間はパターンメタ文字の無効化。 
+    s/([\\\Q!~<>|"\E\x{FF0D}]+)/\$$1\$/g ; # 1. 数式環境に移行して、    ;  \Qと\Eの間はパターンメタ文字の無効化。 
     s/\\/\\backslash/g ;        # 2. そして、まず先にバックスラッシュに処理をして、後の処理が続く。
     s/~/\\sim/g;                # チルダ
     s/\x{FF0D}/\Q\!\!\frac{}{{{}\atop{H}}}\!\!\E/g ;   # 全角ハイフンはその下に、H を小さく書く ; \N{FULLWIDTH HYPHEN-MINUS}
@@ -35,7 +37,8 @@ sub plain2latex ( $ ) {
     s/\x{3000}/\\scalebox{1}[0.5]{\$\\sqcup\$}/g  if $o{'_'} ;  # 全角スペース  は、 -z 指定の場合、皿の形の線が置かれる。\N{IDEOGRAPHIC SPACE}
 
     # LaTeX中でバックスラッシュを伴うべき文字の処理 : Treatments on characters requiring backslash in LaTeX. 
-    s/(?=[\Q_%#&\E])/\\/g ; # (?= ) で正規表現の先読み _%#&  
+    s/(?=[\Q_%#&{}\E])/\\/g ; # (?= ) で正規表現の先読み _%#&{}
+    s/\^/\\^{}/g ; 
 
     # ドル文字の処理  The completion of dollar character.
     s/=\$\$=/\\\$/g ; # ドル文字の処理はここで終わり。
@@ -69,45 +72,59 @@ sub main ( ) {
         chomp ; 
         $_ = decode_utf8 ($_) ;
         $zflag = 1 if m/　/ ; #全角空白 \x{3000} のチェック
-        my @F = split /\t/ , plain2latex ( $_ )  , -1 ; 
-        splice @F , $o{c} if defined $o{c} ; # 切り取り
-        s/(?<=\d)(?=(\d\d\d)+($|\D))/,/g for @F[ @r3 ] ; # 数値3桁区切りの処理
+        my @F = split /$isep/ , plain2latex ( $_ )  , -1 ; 
+        splice @F , $o{w} if defined $o{w} ; # 列数の最大値が指定された場合の、切り取りの処理。
+        grep { s/$rm//} @F[ ($o{1} ? 1:0) .. $#F]  if defined $o{0} && $. >= ($o{'='} ? 1 :0  )  ;
+        my @t3 = grep { $_ < @F } @r3 ; 
+        $. > 1 || ! $o{'='} and s/(?<=\d)(?=(\d\d\d)+($|\D))/,/g for @F[ @t3 ]  ; # 数値3桁区切りの処理
 
         grep { $_ = "\\rotatebox{90}{$_}"} @F if $o{q[']} and $. == 1 ; # 先頭行を回転したい場合。
         push @out, tableStart ( scalar @F ) if $. == 1 ;  
         push @out,  ' ' x 12 , (join ' & ' , @F  ) , "\\\\", "\n" ;
         push @out,  ' ' x 12 , "\\hline\n" if $o{'='} && $.== 1 ; # 1行目と2行目に横の罫線を入れる。
     }
-    push @out, tableEnding( ) ; 
+    push @out, tableStart ( 1 ) if $. == 0 ;
+    push @out, tableEnding( int rand() * 1000000) ; 
+    print STDERR GREEN "$. lines are read.\n" ;
     print @out ; 
 
     print STDERR CYAN "Full-width space included. Using the option '-_' is advisable.\n" if $zflag && ! $o{z} ;
-
 }
 
 sub tableStart ( $ ) { 
-    my @tmp  = ('l') x ( $o{c} // $_[0] ) ;  # 列指定
+    my @tmp  = ('l') x ( $o{w} // $_[0] ) ;  # 列指定
     $tmp [$_] = 'r' for @r3 ; 
-    $colspec = "| " . ( join '' , @tmp ) . "| " ;
-    return << "END" 
+    splice @tmp , $_ * 5 , 0 , ' ' for reverse 1 .. @tmp/5 ; # 列指定に5列ごとに空白文字を入れる。
+    splice @tmp , 1 , 0 , " | " if $o{1} ; # 縦線を入れる指定 
+    $colspec = " | " . ( join '' , @tmp ) . " | " ;
+    my $out =  << "END" ;
 \\begin{table}
     \\center
-    \\rotatebox{$angle}{
+    \\hspace*{-$o{x}}
+    \\rotatebox{$angle}
+    {
     \\scalebox{$o{s}}{
         \\begin{tabular}{$colspec}
             \\hline
 END
+	$out =~ s/(\\hspace\*\{-0mm\})/%$1/ ;
+	$out =~ s/(\\rotatebox\{0\})/%$1/ ;
+	return $out ;
 }
 
-sub tableEnding ( ) {
-    return << "END"
+sub tableEnding ( $ ) {
+    my $out =  << "END" ; 
             \\hline
         \\end{tabular} 
-    }}
-    \\caption{}%
-    \\label{tbl:}%
+    }% closing scalebox
+    }% closing rotatebox 
+    \\hspace*{-$o{x}}
+    \\caption{}
+    \\label{tbl:$_[0]}
 \\end{table}
 END
+	$out =~ s/(\\hspace\*\{-0mm\})/%$1/ ;
+	return $out ; 
 }
 
 ## ヘルプの扱い
@@ -164,12 +181,15 @@ sub HELP_MESSAGE {
     (6) by with -z, emphasizing the fullsize hyphen to indicate that it differs from prolonged sound sign.
 
  Options :     
+    -/ REGEX : Specifying the input delimter. Default is tab character. You can specify as -/ ,  for pseudo-CSV.
     -=   : To indicate that the first line in STDIN is the header, to yield "\hline" btw. 1st and 2nd lines.
-    -c N : To explicitly indicate that the table has N columns. (Else, automatically determined by 1st line)
+    -w N : To explicitly indicate that the table has N columns. (Else, automatically determined by 1st line)
     -j   : For Japanese half-width character. The LaTeX output utilize \scalebox{0.5}[1]{...}
     -s N : N is the displaying magnifying factor. Often used for large-size table to reduce the physical size.
     -_   : To emphasize the space character. Both for half-width \x{20} and full-width \x{3000}.
 
+    -0 regex ; テーブル中のセルで 0 など消去したい値を、正規表現で指定する。-0 '^0$' のように^と$は必要であろう。
+    -1  ; 最も左の列を行名の並びとして扱う。縦線が入る。1列目が -0 の処理の対象外になる。    
     -3 n[..n][,n[..n]][,n[..n]].. ;  Specify number columns. The leftest columns is numbered 1. 
     -9  : Rotate the entire table 90 degree unclockwise, using "\rotatebox{90}".
     -\'  : Rotate each cell of the 1st line unclockwise. Often used that column names are long string. 
@@ -178,6 +198,8 @@ sub HELP_MESSAGE {
 
     --help : Print this online help manual of this command "'=SCRIPT='". Similar to "perldoc `which [-t] '=SCRIPT='` ".
     --help opt ..or..  --help options : Only shows the option helps. It is easy to read when you are in very necessary.
+    --help ja : Shows Japanese online help manual. ; "'=script=' --help ja" で日本語のオンラインマニュアルを表示します。
+    --help nopod : Print this online manual using the code insdide this program without using the function of Perl POD.
 
  Remarks : 
   - \usepackage{graphicx} is needed between \documentclass and \begin{document}, for rotating and magnifying.
@@ -201,27 +223,38 @@ sub HELP_MESSAGE {
     (5) 半角空白と全角空白を目立たせること
     (6) 全角ハイフンも、全角長音と区別させること
 オプション : 
-    -=   : 標準入力の最初の行は、作りたいテーブルのヘッダであると仮定する。(\hlineの処理に関わる)
-    -c N : 表が幅何列かを明示的に指定する。未指定なら先頭行の列数で判定する。
+    -/ REGEX :  区切り文字を 正規表現で指定する。単純なコンマ区切りであれば、-/ , と指定。未指定ならタブ文字。
+    -=   : 標準入力の最初の行は、作りたいテーブルのヘッダであると仮定する。(\hlineの処理と-0の処理に関わる)
+    -w N : 表が幅何列かを明示的に指定する。未指定なら先頭行の列数で判定する。
     -j   : 日本語の半角カナに対応する。
     -s N : 出力の拡大率を指定する。未指定なら 1.0。
     -z   : 全角スペース(UTF8)を、LaTeXの出力結果において、正方形の下半分のような形で可視化する。
 
+
+    -0 regex ; テーブル中のセルで 0 など消去したい値を、正規表現で指定する。-0 '^0$' のように^と$は必要であろう。
+    -1  ; 最も左の列を行名の並びとして扱う。縦線が入る。1列目が -0 の処理の対象外になる。
     -3 n[,n][,n].. :  3桁区切りにして右寄せにしたい列を1始まりで指定する。 ..で範囲指定。
     -9  : LaTeXで表示させる表の全体を90度左回りに回転させる。
-    -H : 便宜上のもの。リリース時に消去。16進の長い文字列を短くする。
+    -x 60mm ; 大きめのテーブルをセンタリングするためにLaTeXのコンパイラに、表の領域を狭く認識させるためのもの。
+    -H : 便宜上のもの。16進の長い文字列を先頭から15桁のみに短かくし、それより長い部分は..に置き換わる。
     -\'   : 1行目を左回りに回転する。
 
     --help : このコマンド '=SCRIPT=' のオンラインヘルプマニュアルを表示する。
     --help opt ないし --help options : 分かり安くオプションのヘルプのみを表示する。
+    --help en : 英語版のオンラインヘルプマニュアルを出力。Online help in English version. 
+
 
 注意点 : 
   - 途中で列数が変わると、LaTeXの動作がうまくいかなくなるので注意。
   - \caption と \label の中が空白なので、後で書き込む必要がある。
   - LaTeX の \scalebox コマンドなどを使うので \usepackage{graphicx} がプリアンブルに必要となる。
+ 
  このプログラムの開発上のメモ : 
    * 3桁区切りにしたい数ではなくて、単に右寄せしたい列の指定をする -r を実装したい。
-   * ドルマークとバックスラッシュの処理は内部処理上でトリッキーだった。正規表現の \Gで解決した。   
+   * ドルマークとバックスラッシュの処理は内部処理上でトリッキーだった。正規表現の \Gで解決した。<-- テストを書くべし。
+   * 入力時に、何も入力が3秒程度発生しなかった場合に、催促するメッセージを STDERRに色つきで表示する機能。
+   * graphicxを要求することの明示を分かり安く(STDERRにも出力したい)。また、-1で、シンプルな、graphicxを要求しないものを生成する機能を作りたい。
+   * 列数が変わる場合に警告を出して、可能なら、空文字列で埋めるようにする。
 
 # このブログラムは 2018年2月9日(金)から表形式データに対する道具作りの一環として、下野寿之が作成したものである。
 =end JapaneseManual
