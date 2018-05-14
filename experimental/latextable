@@ -68,7 +68,10 @@ sub main ( ) {
 
 
     binmode STDOUT, ":utf8" ;
+    $SIG{ALRM} = sub { print STDERR CYAN "Please enter a tabular text in TSV format..\n" if -t } ;
+    alarm 3 ;
     while ( <> ) {
+    	alarm 0 ;
         chomp ; 
         $_ = decode_utf8 ($_) ;
         $zflag = 1 if m/　/ ; #全角空白 \x{3000} のチェック
@@ -201,7 +204,6 @@ sub HELP_MESSAGE {
     -\'  : Rotate each cell of the 1st line unclockwise. Often used that column names are long string. 
     -p  ; LaTeXの冗長なコメント文を出さないようにする。(Primitive)
 
-
     --help : Print this online help manual of this command "'=SCRIPT='". Similar to "perldoc `which [-t] '=SCRIPT='` ".
     --help opt ..or..  --help options : Only shows the option helps. It is easy to read when you are in very necessary.
     --help ja : Shows Japanese online help manual. ; "'=script=' --help ja" で日本語のオンラインマニュアルを表示します。
@@ -237,7 +239,6 @@ sub HELP_MESSAGE {
     -s N : 出力の拡大率を指定する。未指定なら 1.0。
     -_   : 全角スペース(UTF8)と半角スペース及び全角ハイフンについて、LaTeXの出力結果において、分かる様にする。
 
-
     -0 regex ; テーブル中のセルで 0 など消去したい値を、正規表現で指定する。-0 '^0$' のように^と$は必要であろう。
     -1  ; 最も左の列を行名の並びとして扱う。縦線が入る。1列目が -0 の処理の対象外になる。
     -3 n[,n][,n].. :  3桁区切りにして右寄せにしたい列を1始まりで指定する。 ..で範囲指定。
@@ -251,17 +252,13 @@ sub HELP_MESSAGE {
     --help opt ないし --help options : 分かり安くオプションのヘルプのみを表示する。
     --help en : 英語版のオンラインヘルプマニュアルを出力。Online help in English version. 
 
-
 注意点 : 
   - 途中で列数が変わると、LaTeXの動作がうまくいかなくなるので注意。
   - \caption と \label の中が空白なので、後で書き込む必要がある。
-  - LaTeX の \scalebox コマンドなどを使うので \usepackage{graphicx} がプリアンブルに必要となる。
  
  このプログラムの開発上のメモ : 
    * 3桁区切りにしたい数ではなくて、単に右寄せしたい列の指定をする -r を実装したい。
    * ドルマークとバックスラッシュの処理は内部処理上でトリッキーだった。正規表現の \Gで解決した。<-- テストを書くべし。
-   * 入力時に、何も入力が3秒程度発生しなかった場合に、催促するメッセージを STDERRに色つきで表示する機能。
-   * graphicxを要求することの明示を分かり安く(STDERRにも出力したい)。また、-1で、シンプルな、graphicxを要求しないものを生成する機能を作りたい。
    * 列数が変わる場合に警告を出して、可能なら、空文字列で埋めるようにする。
 
 # このブログラムは 2018年2月9日(金)から表形式データに対する道具作りの一環として、下野寿之が作成したものである。
