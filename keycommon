@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 use 5.001 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts '0:12:f:nr_~/:' , \my%o ; 
+use Getopt::Std ; getopts '0:12:cf:nr_~/:' , \my%o ; 
 use Scalar::Util qw/looks_like_number/ ;
 use Term::ANSIColor qw/:constants/ ; $Term::ANSIColor::AUTORESET = 1 ; 
 
@@ -45,6 +45,7 @@ sub outputting {
 
     *UNDERLINE = sub {@_} unless $o{'_'} ;
     for my $k ( @keg ) { 
+        print scalar @{[grep {defined $_} @{$val{$k}} ]}, "\t" if $o{c} ;
         print UNDERLINE $k ;
         print join $sep , '' , map {  $val{$k}[$_] // $empty } 0 .. $pole -1 ; 
         print "\n" ; 
@@ -83,6 +84,7 @@ __END__
     -/ str : 区切り文字をタブから指定した変更する。
     -~ : キーとバリューを反転する。(左側をバリュー、右側をキーとみなす。) 
     -_ : キーに下線を引く。ANSIカラーエスケープコードを使用している。
+    -c : 各キーに該当するファイルの個数を行の先頭に表示する。(このことで共通集合を検出するトリッキーなこともできる。)
     -f num : キーとバリューを分離する位置を指定する。未指定なら1であり、その場合、最左列とそれ以外に分ける。
     -n : キーの出力順序に関して、最初に数値については数の順序でソートし、その次に数値以外を文字列で整列する。
     -r : キーの出力順序を逆にする。
