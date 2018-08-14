@@ -9,7 +9,7 @@ my %G ; # グループ
 while  ( <> ) { 
 	chomp ; 
 	my $k = ( substr $_ , 0, $o{h} ) . ( substr ' ' x $o{t} . $_ , -$o{t} , $o{t} ) ; 
-	$k = do { /.*(\Q$o{a}\E.*$)/ ; $1 // '' } if defined $o{a} ; 
+	$k .= do { /.*(\Q$o{a}\E.*$)/ ; $1 // '' } if defined $o{a} ; 
 	print "$k\t$_\n" if $o{1} ;
 	push @{$G{$k}} , $_ ;
 }
