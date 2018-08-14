@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+use 5.001 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts '1g:h:t:n' , \my %o ;
+	
+$o{h} //= 0 ; 
+$o{t} //= 0 ; 
+
+my %G ; # グループ
+while  ( <> ) { 
+	chomp ; 
+	my $k = ( substr $_ , 0, $o{h} ) . ( substr ' ' x $o{t} . $_ , -$o{t} , $o{t} ) ; 
+	print "$k\t$_\n" if $o{1} ;
+	push @{$G{$k}} , $_ ;
+}
+
+for ( sort keys %G ) { 
+	my @tmp = @{$G{$_}} ;
+	my $n = @tmp ; 
+	@tmp = splice @tmp , 0, $o{g} if defined $o{g} ;
+	print join ( "\t" , $_ , $n , @tmp ) . "\n" ;
+}
+
+__END__ 
+
+-g N  : 各グループから最大いくつ取り出すか。
+
+-h N  :  先頭からN文字を取る
+-t N  :  末尾からN文字を取る
+
+-1  ; 先頭と末尾を取り出した値をそのまま出す
