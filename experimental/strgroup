@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 use 5.001 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts '1a:g:h:t:n' , \my %o ;
+use Getopt::Std ; getopts ':1a:g:h:t:n' , \my %o ;
 	
 $o{h} //= 0 ; 
 $o{t} //= 0 ; 
@@ -8,13 +8,15 @@ $o{t} //= 0 ;
 my %G ; # グループ
 while  ( <> ) { 
 	chomp ; 
-	my $org = $_ ;
+	my $org = $_ ; # 各行に含まれる元の文字列
 	my $k = do { s/(.*)(\Q$o{a}\E.*$)/$1/ ; $2 // '' } if defined $o{a} ; 
 	$k = ( substr $_ , 0, $o{h} ) . ( substr ' ' x $o{t} . $_ , -$o{t} , $o{t} ) . $k  ; 
-	print "$k\t$_\n" if $o{1} ;
+	$org = "$.:$org"  if $o{':'} ;
+	print "$k\t$org\n" if $o{1} ;
 	push @{$G{$k}} , $org ;
 }
 
+exit if $o{1} ;
 for ( sort keys %G ) { 
 	my @tmp = @{$G{$_}} ;
 	my $n = @tmp ; 
@@ -31,5 +33,6 @@ __END__
 -a str : 文字列strより以降を取る。最短一致。ls と組みあわせて -a . の指定で，ファイル名を拡張子毎に分類することができる。
 
 -1  ; 先頭と末尾を取り出した値をそのまま出す
+-:  ; 各入力が何行目から来たのかを出力する様にする。
 
 追加したいオプション : -y N..N で出現する頻度の範囲を指定できるようにしたい。
