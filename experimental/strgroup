@@ -1,38 +1,112 @@
 #!/usr/bin/perl
 use 5.001 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts ':1a:g:h:t:n' , \my %o ;
-	
+use Getopt::Std ; getopts ':~1Bs:g:h:nrt:uxy:' , \my %o ;
+use Encode qw[ decode_utf8 ] ;
+use Term::ANSIColor qw[ color :constants ] ; $Term::ANSIColor::AUTORESET = 1 ;
+    
+$o{h} = 1 if ! defined $o{h} && ! defined $o{t} && ! defined $o{s} ;    
 $o{h} //= 0 ; 
 $o{t} //= 0 ; 
-
+binmode STDOUT, ':utf8' if $o{u} ;
 my %G ; # グループ
-while  ( <> ) { 
-	chomp ; 
-	my $org = $_ ; # 各行に含まれる元の文字列
-	my $k = do { s/(.*)(\Q$o{a}\E.*$)/$1/ ; $2 // '' } if defined $o{a} ; 
-	$k = ( substr $_ , 0, $o{h} ) . ( substr ' ' x $o{t} . $_ , -$o{t} , $o{t} ) . $k  ; 
-	$org = "$.:$org"  if $o{':'} ;
-	print "$k\t$org\n" if $o{1} ;
-	push @{$G{$k}} , $org ;
-}
+my ( @ranges , @y_ranges ) ;
 
+& reading ; 
 exit if $o{1} ;
-for ( sort keys %G ) { 
-	my @tmp = @{$G{$_}} ;
-	my $n = @tmp ; 
-	@tmp = splice @tmp , 0, $o{g} if defined $o{g} ;
-	print join ( "\t" , $_ , $n , @tmp ) . "\n" ;
+& y_init ; 
+& writing ; 
+exit 0 ; 
+
+sub y_init ( ) { 
+     my @ranges = split /,/ , $o{y} // '' , -1 ; 
+    grep { $_ = $_ . ".." . $_ unless m/\.\./ }  @ranges ; # = split /,/ , $o{y} // '' , -1 ; 
+    do { m/^(\d*)\.\.(\d*)/ ; push @y_ranges , [ $1||1 , $2||'Inf' ] } for @ranges ; 
+}
+sub y_filter ( $ ) { 
+    do { return not 0 if $_->[0] <= $_[0] && $_[0] <= $_->[1] } for @y_ranges ; 
+    return @y_ranges ? not 1 : not 0 ; # 指定が無かった場合はとにかく真を返す。
 }
 
-__END__ 
+sub reading ( ) { 
+  #$o{s} = '\Q' . $o{s}. '\E' if ! $o{r} ; 
+  $o{s} = qr[\Q$o{s}\E] if defined $o{s} && ! $o{r} ; 
+  #print '$o{s}='."$o{s}\n" ;
+  while ( <> ) { 
+    chomp ; 
+    $_ = decode_utf8 ( $_ ) if $o{u} ;
+    my $org = $_ ; # 各行に含まれる元の文字列
+    my $k ;
+    $k = do { s/(.*)($o{s}.*$)/$1/ ; $2 // '' } if defined $o{s} ; # -a で指定された文字列を含めてそれ以降を取り出したい場合
+    $k = ( substr $_ , 0, $o{h} ) . ( substr ' ' x $o{t} . $_ , -$o{t} , $o{t} ) . ($k // '')  ; # -h または -tの片方/両方が指定された場合
+    $org = "$.:$org"  if $o{':'} ; # 後で表示の際に、何番目のデータであったかを示す。
+    print "$k\t$org\n" if $o{1} ;
+    push @{$G{$k}} , $org ;
+  }
+}
 
--g N  : 各グループから最大いくつ取り出すか。
 
--h N  :  先頭からN文字を取る
--t N  :  末尾からN文字を取る
--a str : 文字列strより以降を取る。最短一致。ls と組みあわせて -a . の指定で，ファイル名を拡張子毎に分類することができる。
+sub writing ( ) {
+  print UNDERLINE join ("\t" , ! $o{'~'} ? qw[ key cnt inputs ..] : qw[ cnt key inputs ..] ), "\n" unless $o{'x'} ;
 
--1  ; 先頭と末尾を取り出した値をそのまま出す
--:  ; 各入力が何行目から来たのかを出力する様にする。
+  my @k = ! $o{n} ? sort keys %G : sort { @{$G{$b}} <=> @{$G{$a}} } keys %G ; 
+  for ( @k ) { 
+    my @tmp = @{$G{$_}} ;
+    my $n = @tmp ; 
+    next unless y_filter$n ;
+    @tmp = splice @tmp , 0, $o{g} if defined $o{g} ;
+    $_ = BOLD $_ if $o{B} ;
+    ( $_ , $n ) = ( $n , $_  ) if $o{'~'} ; # 表示の順序を入れ替える。
+    unshift @tmp , $_ , $n ; 
+    print join ( "\t" ,  @tmp ) . "\n" ;
+  }
+}
+
+
+## ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+    }
+    close $FH ;
+    exit 0 ;
+}
+
+=encoding utf8
+
+ strgroup 
+
+   各行に与えられた文字列に対して、先頭か末尾の数文字、もしくは「指定された文字列および末尾方向にそれ以降」をキーにして
+   全行を分類して、各キーごとに，何行現れ、具体的にどんな文字列が与えられたかを示す。
+
+
+
+=head1
+
+オプション:   (Nは数値、strは文字列のパラメータを表す。)
+
+  -g N  : 各グループから最大いくつ取り出すか。
+
+  -h N  :  先頭からN文字を取る
+  -t N  :  末尾からN文字を取る
+  -s str : 文字列strより * 以降 * を取る。最短一致。ls と組みあわせて -a . の指定で，ファイル名を拡張子毎に分類することができる。
+  -r   : -s による文字列指定が、正規表現による指定であることの指定。肯定的後読み(?<=pattern)foo なども使える。
+
+  -1  ; 先頭と末尾を取り出した値をそのまま出す
+  -:  ; 各入力が何行目から来たのかを出力する様にする。
+
+  -n  : 出力の順序を、各グループの個数が多いものを優先する。
+  -u  : utf8として処理する。
+  -x  : 出力の各列の属性名を出力しない。
+  -y N..N[,N..N] : 各グループの該当個数でフィルター。N1..N2でN1以上N2以下に限定。N1とN2はどちらか省略可能。,で区間を並べることが可能。
+  -B  : 出力でキーを太字にする。(空文字列がキーの場合に識別が容易になる。)
+  --help : このヘルプの表示。
+  --help opt : オプションのヘルプのみを表示。    
 
 追加したいオプション : -y N..N で出現する頻度の範囲を指定できるようにしたい。
+
+=cut
