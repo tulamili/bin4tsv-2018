@@ -63,22 +63,137 @@ sub writing ( ) {
 }
 
 
-## ヘルプの扱い
-sub VERSION_MESSAGE {}
+## ヘルプとバージョン情報
+BEGIN {
+  $Getopt::Std::STANDARD_HELP_VERSION = 1 ; 
+  grep { m/--help/} @ARGV and *VERSION_MESSAGE = sub {} ; 
+  our $VERSION = 0.01 ;
+    # 最初は 0.21 を目安とする。
+    # 1.00 以上とする必要条件は英語版のヘルプをきちんと出すこと。
+    # 2.00 以上とする必要条件はテストコードが含むこと。
+    # 0.23 : 英文ヘルプをPODにした。
+}  
 sub HELP_MESSAGE {
-    use FindBin qw[ $Script ] ; 
+    use FindBin qw[ $Script $Bin ] ;
+    sub EnvJ ( ) { $ENV{LANG} =~ m/^ja_JP/ ? 1 : 0 } ; # # ja_JP.UTF-8 
+    sub en( ) { grep ( /^en(g(i(sh?)?)?)?/i , @ARGV ) ? 1 : 0 } # English という文字列を先頭から2文字以上を含むか 
+    sub ja( ) { grep ( /^jp$|^ja(p(a(n?)?)?)?/i , @ARGV ) ? 1 : 0 } # jp または japan という文字列を先頭から2文字以上を含むか 
+    sub opt( ) { grep (/^opt(i(o(ns?)?)?)?$/i, @ARGV ) ? 1 : 0 } # options という文字列を先頭から3文字以上含むから
+    sub noPOD ( ) { grep (/^no-?pod\b/i, @ARGV) ? 1 : 0 } # POD を使わないと言う指定がされているかどうか
+    my $jd = "JapaneseManual" ;
+    my $flagE = ! ja && ( en || ! EnvJ ) ; # 英語にするかどうかのフラグ
+
+    exec "perldoc $0" if $flagE &&  ! opt && ! noPOD   ; 
     $ARGV[1] //= '' ;
     open my $FH , '<' , $0 ;
     while(<$FH>){
-        s/\$0/$Script/g ;
-        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+        s/\Q'=script='\E/$Script/gi ;
+        s/\Q'=bin='\E/$Bin/gi ;
+        if ( s/^=head1\b\s*// .. s/^=cut\b\s*// ) { 
+            if ( s/^=begin\s+$jd\b\s*// .. s/^=end\s+$jd\b\s*// xor $flagE ) {
+                print $_ if ! opt || m/^\s+\-/  ; 
+            }
+        } 
+        #print $_ if /^=head1/ .. /^=cut\b/ and opt ? m/^\s+\-/ : 1 and ( EnvJ && ! en xor s/^=begin $jd\b// .. s/^=end $jd\b// ) ;
     }
     close $FH ;
     exit 0 ;
+
 }
 
-=encoding utf8
 
+=encoding utf8 
+
+=head1 NAME
+
+strgroup  (This may change its program name into `strsort'.)
+
+=head1 VERSION
+
+0.01
+
+=head1 SYNOPSIS
+
+strgroup 
+
+=head1 DESCRIPTION
+
+   For each character string on each line, group them based on either of 
+   beginning N characters, ending N characters or `the string specified and later'.
+   The output is sorted by the key as defined above with the input frequency and 
+   concrete examples. 
+
+=head1 OPTION (N means a nubmeric parameter, str means the chracter string parameter.)
+
+=over 4
+
+=item B<-g> N 
+
+The number of items for each group is Got at most 2*N. (The smalles N items and the largest N items.)
+
+=item B<-h> N 
+
+Taking N characters from the Head of the charater string. 
+
+=item B<-t> N 
+
+Taking N characters from the Tail of the charater string. 
+
+=item B<-s> str
+
+Taking `str' and *after*. Shortest match.  Example: " -s . "  then you can sort all the file extention.
+
+=item B<-r> 
+
+The flag that you specify the regular expression. So you can use "-r -s '(?<=pattern)foo' " .
+
+=item B<-1>
+
+No aggregation. 
+
+=item B<-:>
+
+In the output, each item is attached with the input line number like '12:item'
+
+=item B<-n>
+
+Put priority by the total frequency for each group(key).
+
+=item B<-u>
+
+Process as UTF-8.
+
+=item B<-x>
+
+Simple output so that no header in the output.
+
+=item B<-y> N..N[,N..N]..
+
+Filter by the frequency.  N1..N2 means a range. You can specify multiple ranges by ",".
+ 
+=item B<-B>
+
+Key will be bold. Useful to identify that they are keys.
+
+=item B<-~>
+
+Reverse the order of ouput lines.
+
+=item B<--help>
+
+Show this help manual.
+
+=back
+
+=head1 HISTORY
+
+This program has been made since 2018-08-18.
+
+=head1 AUTHOR
+
+"Toshiyuki Shimono", C<< <bin4tsv at gmail.com> >>
+
+=begin JapaneseManual 
  strgroup 
 
    各行に与えられた文字列に対して、先頭か末尾の数文字、もしくは「指定された文字列および末尾方向にそれ以降」をキーにして
@@ -110,9 +225,6 @@ sub HELP_MESSAGE {
   --help : このヘルプの表示。
   --help opt : オプションのヘルプのみを表示。    
 
-追加したいオプション : -y N..N で出現する頻度の範囲を指定できるようにしたい。
-
-開発メモ: 
-   * -sで*以降*を示すのではなくて、(正規表現で指定された)その文字列を取り出したい。右から最短で取り出す指定をどうするかが課題。
+=end JapaneseManual
 
 =cut
