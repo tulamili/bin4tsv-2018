@@ -1,0 +1,135 @@
+#!/usr/bin/perl -t  
+
+use 5.014; use strict; use warnings;
+use File::Temp qw/tempfile tempdir/ ;
+use Getopt::Std; getopts "c:i:j:o:t:y:C:LR:V", \my%o ;
+$o{c} //= '"royalblue"' ; # 描画するカーブの色を表す文字列
+$o{i} //= 4  ; # y軸の第一レベルの分割数
+$o{j} //= 5  ; # y軸の第二レベルの分割数
+$o{o} //= 'Rplots.pdf' ;
+$o{t} //= '' ; # グラフのタイトルの名前
+$o{y} //= 'NULL' ; # y軸の範囲の指定。無ければNULLとする。
+$o{C} //= '' ; # 2番目以降のデータセットに対する色指定
+$o{L} = defined $o{L} ? 'y' : '' ; # y軸を対数グラフにするときに指定。
+$o{R} //= 'R' ; # Rブログラムのパスの指定
+
+my ($fh, $fn) = tempfile ()  ;
+print {$fh} qq{
+
+  xv <- 0:800/800;
+
+  pdf ( file = "$o{o}" )
+  par(mai=c(1.5,1.5,1,1)); 
+
+  vals<-scan('stdin');
+  yv <- quantile(vals, xv, type=1) ;
+  plot(xv ,yv,ylim=$o{y},type="S",col=$o{c},xaxt="n",xaxs="i",yaxs="i",cex.axis=1.5,las=2,xlab="",ylab="",lwd=3, log="$o{L}");
+
+} ;
+
+my $cflag = 0 ;
+for( @ARGV ) {
+  my $C ; 
+  if ($cflag) { $C = $_ ; $cflag = 0 ; next }
+  if ($_ =~/^-[cC]$/ ) { $cflag = 1 ; next }
+  if ($_ =~/^-[cC]\ +/) { $C = $' }
+  $C //= '"green4"' ;
+  print {$fh} qq{
+  vals<-scan('$_')  ;
+  yv <- quantile(vals, xv, type=1) ;
+  points(xv ,yv,type="l",col=$C,lwd=3);
+}
+}
+
+print {$fh} qq{
+  axis(1,0:4/4,paste(0:4*25,"%"),cex.axis=1.3);
+  title( main = "$o{t}", cex.main=2.1);
+
+  gridmesh = function(x,y) {nx<-length(x);ny<-length(y);return( list(x=matrix(x,ny,nx,TRUE),y=matrix(y,ny,nx,FALSE)))}
+  xt1 <- 0:4/4;
+  xt2 <- 0:20/20;
+  xt3 <- 0:100/100;
+
+  yt1 <- axTicks ( 2, n=4 ) ;
+  ytk1 <- min( diff(yt1)/$o{i} ) ;
+  yt2 <- seq ( min(yt1)-ytk1*$o{i} , max(yt1)+ytk1*$o{i} , ytk1 ) ;
+  ytk2 <- min( diff(yt2)/$o{j} ) ;
+  yt3 <- seq ( min(yt2)-ytk2*$o{j} , max(yt2)+ytk2*$o{j} , ytk2 ) ;
+
+  if ( "$o{L}" == "y" ){
+    yminL = floor(log10(min(axTicks(2))));
+    ymaxL = ceiling(log10(max(axTicks(2))));
+    yt1 <- 10^( (yminL-1) :ymaxL);
+    yt2 <- yt1 %x% c(1,2,5) ;
+    yt3 <- yt1 %x% c(5:10/5,5:10/2,5:9) ;
+  }
+
+  points( gridmesh( xt1, yt1) , pch=3, cex=3., lwd = 1 , col="gray0" ) ;
+  points( gridmesh( xt2, yt2) , pch=3, cex=.6, lwd = 1 , col="gray50" ) ;
+  points( gridmesh( xt3, yt3) , pch=3, cex=.1, lwd = 1 , col="gray70" ) ;
+
+};
+close( $fh) ;
+ no warnings ; 
+ my $out= qx/ $o{R} --slave -q --vanilla -f $fn/ if ! $o{V} ; 
+ use warnings ;
+print qx/cat $fn/ if $o{V} ;
+unlink ( $fh ) ;
+
+
+# ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+    }
+    close $FH ;
+    exit 0 ;
+}
+=encoding utf8
+=head1
+
+
+  $0 
+
+  主要動作:
+    数を(Rのscanで読み取って) 分位値プロットを pdfファイルに出力する。
+    メッシュによる刻みを入れる。
+
+  入力するデータに関して:
+    改行、空白、タブ文字で数値は区切られているものとする。
+    (コンマ区切りは想定外の動作をする。)
+
+  例:
+    echo 1 20 {3..23} | fractile.pl
+
+  オプション:
+    -c '"royalblue"'   : グラフカーブの色を表す文字列
+    -i 数  :  y軸方向の第一レベルの刻みの分割数
+    -j 数  :  y軸方向の第二レベルの刻みの分割数
+    -o Rplots.pdf : グラフを書き込むpdfファイルの名前を指定する。
+    -t タイトル : グラフのタイトルになる。
+    -y 'c(-2,4)'  : y軸の範囲を明示的に与える。
+    -C "'green4'"    : 複数のデータセットを扱う時の色の指定の仕方になる。
+    -L    : 描画グラフのy軸方向が対数スケールになる。 -iと-jの指定は無効化する。
+    -R Rプログラムのパス   : 本プログラムはR言語に依存している。必要があればRがどこにあるかを指定する。
+    -V   :  R言語に渡したスクリプトファイルを表示してすぐ終了。
+
+    上記で、-i と -j については、デフォルトでは -i 4 -j 5 である。
+
+
+  複数のデータセットを扱いたいとき : 
+     cat data1 | fractile.pl -c "'firebrick3'" -C "'green4'" data2
+     cat data1 | fractile.pl -c "'firebrick3'" -C "'green4'" data2 data3 -C "'orange'" data4 
+   のようにコマンドを書く。 色を指定したいデータセットの前に -C で色を指定する。
+
+    (なお、R言語の色番号を指定することも出来る。) 
+
+
+  このコマンドの動作条件: 
+    このプログラムは R 3.2.2 での動作を確かめている。
+=cut
