@@ -1,0 +1,120 @@
+#!/usr/bin/perl
+use 5.018; use warnings ; 
+use feature qw [ say ] ; 
+use Getopt::Std ; 
+getopts '::c', \my%o ; 
+use Term::ANSIColor qw[ :constants ] ; $Term::ANSIColor::AUTORESET = 1 ; 
+
+
+my @ABC = map chr $_ + ord 'A', 0 .. 25 ; 
+my @abc = map chr $_ + ord 'a', 0 .. 25 ; 
+my %a2n ; 
+$a2n { chr $_ + ord 'A' } = $_ for 0 .. 25 ; 
+$a2n { chr $_ + ord 'a' } = $_ for 0 .. 25 ; 
+
+my $transed = 0 ; #何個を変換したか
+
+
+# A1形式のAから数値への変換(eはエクセルの先頭文字)
+sub e2n ($) { 
+  my $e = do { $_[0] =~ m/([A-Za-z]+)/ ; $1  } ; # 処理対象の文字列
+  my $d = length $e ; 
+  my @e = split // , $e ; 
+  return do { my $n = 0 ; $n += (26 ** $_) for 0 .. ($d -1) ; $n += $a2n{ $e[ - $_ ] } * 26 ** ( $_-1 ) for 1 .. @e ; $n } ;
+}
+
+# 数値からA1形式のAに変換
+sub n2e ($){
+  #say BOLD RED $_[0] ;
+  my $n = do { $_[0] =~ m/([0-9]+)/ ; $1  } ; # 処理対象の文字列
+  my $e = '' ;
+  my $d = 0 ; do { my $t = 0 ; while ( $n >= 0 ) { $t = 26 ** $d ++ ; $n -= $t } ; $n += $t ; $d -- } ;
+  for ( 1 .. $d ) { $e = $ABC [ $n % 26 ] . $e ; $n = int $n / 26 }
+  return $e ; 
+}
+
+# エクセルの範囲を超えたら警告
+#   1番目は列番号, 2番目は行番号。この順序の由来は、この2個についての最大値の大きさの順(16384 < 1048576	)
+sub oalert { 
+	state $mc = $o{c} ? 256 : 16384 ; # エクセルの最大列数 2003以前かどうかで変わる
+  state $mcc = n2e $mc ; 
+	state $mr = $o{c} ? 65536 : 1048576 ; # エクセルの最大行数
+	state $an = $o{c} ? "Excel 2003" : "the Excel" ; 
+	# 引数が1個の場合
+	if ( @_ == 1 ) { return $_[0] > 16384 ? "This column position is over $an limit ($mc or $mcc)." : () }  
+	# 引数が2個の場合: (実際は1個以外の場合全て)
+	if ( $_[0] <= 16384 && $_[1] <= 1048576 ) { return () }
+	elsif ( $_[0] <= 16384 ) { return "The row position is over $an limit ($mr)." } 
+	elsif ( $_[1] <= 1048576 ) { return "The column position is over $an limit ($mc or $mcc)."}
+	else { return "Both the row and the column positions are over $an limit (${mr}x${mc})."}
+}
+
+while ( <> ){ 
+  chomp ; 
+  s/^\s+//  ; # 先頭の空白文字を消す
+  s/\s+$//  ; # 末尾の空白文字を消す
+
+  my @out = do { 
+     if ( m/^[A-Za-z]+$/ ) { ( $_ = e2n $_ ) , oalert $_ }  # 入力がアルファベットのみ
+     elsif ( m/^\d+$/ ) { n2e $_ ,  oalert $_ }  # 入力が数値のみ
+     elsif ( m/^([A-Za-z]+)(\d+)$/ ) { "R$2C" . ( $_ = e2n $1 ) , oalert $_ , $2 }  # 入力がA1形式の場合
+     elsif ( m/^R(\d+)C(\d+)$/ ) { & n2e ( $2 ) . $1 , oalert $2, $1 }  # 入力がR1C1形式の場合
+     else { () }
+   } ;
+
+  if ( @out ) { 
+    print ++ $transed, ":\t" unless exists $o{':'} && $o{':'} eq '0' ;
+    say join "\t" , @out ;
+  }
+}
+
+## ヘルプの扱い
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE {
+    use FindBin qw[ $Script ] ; 
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if s/^=head1// .. s/^=cut// and $ARGV[1] =~ /^o(p(t(i(o(ns?)?)?)?)?)?$/i ? m/^\s+\-/ : 1;
+    }
+    close $FH ;
+    exit 0 ;
+}
+
+
+=encoding utf8 
+
+=head1
+
+ excelcoord
+
+   マイクロソフトエクセルのセルの位置の表し方であるA1形式とR1C1形式を相互に変換する。
+   標準入力で各行を読み取り、A1形式であればR1C1形式に変換して、標準出力に出力し、
+   R1C1形式であれば、A1形式で出力する。
+
+   数値のみであればR1C1形式の列番号(Cの直後の数)と見なし、A1形式の列名(Aに相当する部分)
+   を返す。アルファベットのみで構成される文字列であれば、A1形式のAに相当する文字列とみなし、
+   数値で列番号を返す。
+
+  使用例: 
+     下記は、==> の前後で標準入力の各行がどう変換されて標準出力に何が出力されるかを表す。
+     3 ==> C
+     J ==> 10 
+     AA ==> 27 
+     27 ==> A
+     ZZ ==> 702
+     702 ==> ZZ
+
+     R1C1 ==> A1
+     R2C1 ==> A2
+     R1C2 ==> B1 
+
+     C25 ==> R25C3
+
+
+  オプション: 
+    -: 0 ← このオプションをコマンドに付加することで出力の行番号の出力を抑制する。
+    -c ← Excel  以前だと、(2**20行2**14列ではなく)65536行256列が最大だったことに合わせて警告を表示。
+=cut
+
