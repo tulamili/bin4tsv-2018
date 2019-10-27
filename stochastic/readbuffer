@@ -1,0 +1,114 @@
+#!/usr/bin/perl
+use 5.014; use warnings ; 
+#package mypackage ;
+use Time::HiRes qw [ gettimeofday tv_interval sleep ] ;
+my ${ dt_start } = [ gettimeofday ] ; 
+use Getopt::Std ; getopts '=g:w:2:', \my %o ;
+use Term::ANSIColor qw[ :constants ] ; $Term::ANSIColor::AUTORESET = 1 ;
+use Heap::Elem::Num qw[ NumElem ]; 
+use Heap::Fibonacci ;
+use Scalar::Util qw[ dualvar ] ;  
+#use Filter::cpp ; 
+my $seed = do{ defined $o{g} && $o{g} =~ m/.*,(.*)/ ? $1 : undef } ; # 乱数シードを -g のパラメータで , 区切りの後を取り出す。
+srand do{ $seed//=(1<<32).'!' ; $seed = int rand $1 if $seed =~s/(.*)!$// ; $seed } if defined $seed ; # 乱数シードの指定
+
+sub PRINT ;
+* PRINT = $o{w} ? sub { sleep $o{w} ; print @_ } : sub{ print @_ } ; 
+#sub printw ; 
+* main = defined $o{g} ? * getExactNum : * allRead ;
+& main ;
+
+sub allRead {  
+  my @bucket ; 
+  push @bucket , $_ for <> ; 
+  PRINT $_ for @bucket ;
+}
+
+sub getExactNum { 
+  print do {my $t = <>} if $o{'='} ;
+  my $g = $o{g} =~ s/,.*//r ; # 抽出したい件数
+  my $g2 = int $g + sqrt $g * 6 + 14 ; # 完全に組合せでも一様になる確率が 1 - 1e-6 以上を確保したつもり。  
+  my $p = undef ; # 抽出確率
+  my @bucket ; # 出力する可能性のあるものを格納
+  * skip = sub { $p < 1 ?  int ( 1 / log ( 1 - $p ) * log rand ) : 0 } ;
+  * pAdj = sub { $p = $.<= $g ? 1 : $g2 / $. ; $p = 1 if $p > 1 } ;
+  $. = 0 ; # undef だったのを 0 にしてしまう。
+  my $c  = do { & pAdj ; & skip } ;  # 実際のスキップの数
+  while ( <> ) {
+    next if $c -- > 0 ; 
+    push @bucket , dualvar +(rand)*$p , $_ ;
+    $c  = do { & pAdj ; & skip } ; 
+    # #$p = $. <= $g ? 1 : $g / $. * 3 ; $p = 1 if $p > 1 ;
+    # #$c = $p < 1 ?  int ( 1 / log ( 1 - $p ) * log rand ) : 0 ;
+  }
+
+  # とりだす基準を決める
+  my $h = Heap::Fibonacci-> new ; 
+  $h -> add ( NumElem $_ + 0  ) for @bucket ; 
+  my $cap = "inf" ; 
+  $cap = $_ -> val while ($g --) && ($_= $h -> extract_top) ;
+  # きっちり出力
+  for ( @bucket ) { 
+    PRINT $_ . '' if $_ <= $cap ; # <-- -- - 複数の乱数が偶然一致した場合の処理を含めるぺし!
+  }
+}
+
+END{
+  exit if (${2}//'') eq 0 ;
+  * d3 = sub { $_[0] =~ s/(?<=\d)(?=(\d\d\d)+($|\D))/,/gr } ;
+  my $rl = & d3 ($. //0) ; # read lines
+  my $procsec = tv_interval ${ dt_start } ;
+  my $out ; 
+  $out = defined $seed ? "Random Seed = $seed; " : '' ; 
+  print STDERR BOLD DARK ITALIC CYAN $out, "$rl line(s) read; $procsec seconds (readbuffer)\n" if ($o{2}//'') ne '0' ;
+  exit 0 ; 
+}
+
+=encoding utf8
+
+=pod
+
+=head1 NAME
+
+buffer
+
+=head1 VERSION
+
+version 0.01
+
+=head1 SYNOPSYS
+
+=over 4
+
+=item cat | buffer 
+
+=item buffer < somefile
+
+=item buffer | someCommand 
+
+=item buffer | tee writtenFile | someCommand 
+
+=back
+
+=head1 DESCRIPTION
+
+Reads the whole input then write into STDOUT. Probably useful at copy/paste operation.
+
+=head1 OPTIONS
+
+-g N : extract exactly N number of lines.
+
+-g N,S : extract exactly N number of lines, with the random seed S. 
+
+-g N,S! : extract exactly N number of lines, with the random seed of some random number between 0 and S. 
+
+-2 0 : Supress the summary information to be output on the stderr.
+
+-w N : wait N seconds for each output line. (N can be a non-integer.)
+
+=head1 TODO
+
+Probably some useful options should be carefully selected and implemented to this command.
+
+
+=cut 
