@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+use 5.014 ; use strict ; use warnings ;
+use Getopt::Std ; getopts '2:ces:t:u' , \my%o ; 
+use Term::ANSIColor qw[ :constants ] ; $Term::ANSIColor::AUTORESET = 1 ;
+
+my $sp = ' 　' ; #　半角空白と全角空白を並べた。
+my $suppRegex = $o{s} if defined $o{s} ;
+my $Cg = 0 ; # 置換の発生した個数
+my $Cl = 0 ; # 置換の発生した行数
+my $c  ; # 各行で置換の発生した個数
+* LineTailCut = $o{u} ? sub {s/[$sp]+$// } :sub { s/ +$// } ; # 各行末尾の空白を置換
+* Suppress = defined $o{s} ? sub { s/$suppRegex//g } : sub {} ; 
+* MiddleTailCut = $o{c} ? $o{u} ? sub {s/[$sp]+\t/\t/g } : sub { s/ +\t/\t/g } : sub { 0 } ; # タブ文字直前の空白を置換
+* EndPut = $o{e} ? sub { s/$/|$c/ } : sub {} ; # 出力行の最後に|を加え何個のグループを置換したか情報を追加。
+
+sub tNreplace { 
+  my @F = split /\t/, $_ , -1 ; 
+  my $c = $o{t} ;
+  my @head = splice @F, 0, $c ;
+  my @tail = do{ my $t = @F > $c ? $c : @F ; splice @F , -$t , $t } ; 
+  my @mid  = @F ? (sprintf "<-- %dバイト(%d列) -->", length (join "\t", @F), @F+0 ) : () ;
+  $_ =  join "\t" , @head, @mid , @tail ;
+}
+
+* TabReplace = ($o{t}//'') eq 0 ? sub { s/\t.*\t/\t/ } : 
+               ($o{t}//'') >= 1 ? \&tNreplace :
+               #sub { s/\t(.*)\t/\t/ ; my $L = length $1 ; s/\t/\t<- $L バイト ->\t/ } : 
+               sub { } ;
+while ( <> ) { 
+  #$c = & MiddleTailCut + & LineTailCut ; 
+  & { Suppress } ;
+  $c = & { MiddleTailCut }  + & { LineTailCut } ; 
+  & { TabReplace } ;
+  do { $Cl ++ ; $Cg += $c } if $c ; 
+
+  & EndPut ;
+  print $_ ;
+}
+
+say STDERR CYAN DARK BOLD ITALIC "Substitutions occur at $Cg group(s) in $Cl line(s). (suppstr)" if ($o{2}//'') ne 0;
+
+=encoding utf8
+
+=head1
+
+suppstr 
+
+ 各行の末尾の空白を除去する。
+
+オプション: 
+  
+  (入力における処理)
+   -c : タブ区切りの各セルの、末尾の空白を除去する
+   -u : 半角空白文字だけではなくて、全角空白文字も除去する。
+   -s REGEX :　各行で指定された正規表現を空文字列に変換する。'\t+$'を指定すれば末尾のタブが消える。
+
+   -t 0 : タブ文字の間をタブに置き換え
+   -t 1 : タブ文字が2回以上現れる場合にその間のバイト数情報に置換する。
+
+  (出力における処理)
+   -e : 行末に "|"を追加して、その行の置換の発生個数を表示
+   -2 0 : 標準エラー出力への一行サマリを抑制する
+
+
+=cut
+
