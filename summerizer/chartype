@@ -1,0 +1,190 @@
+#!/usr/bin/perl
+use 5.014 ; use warnings ;
+use Time::HiRes qw [ gettimeofday tv_interval ] ; my ${ dt_start } = [ gettimeofday ] ; 
+use Scalar::Util qw/looks_like_number/;
+use Getopt::Std; getopts '/=02:bce:g:jnp:s:' , \ my %o;
+use Term::ANSIColor qw[ :constants ] ; $Term::ANSIColor::AUTORESET = 1 ;
+use feature qw[ say ] ; 
+use Encode qw[ decode_utf8 encode_utf8 ] ;
+use List::Util qw[ minstr maxstr ] ;
+
+my @types = qw [ num upper lower halfsp other Other ] ;
+unshift @types , "extra" if defined $o{e} ;
+my %ty2ex = ( num => qr/[0-9]/ , upper => qr/[A-Z]/ , lower => qr/[a-z]/ , halfsp => qr/ / , other => qr/\p{ascii}/ , Other => qr/./ ) ;
+$ty2ex { extra } = qr/$o{e}/ if defined $o{e} ;
+%ty2ex = ( %ty2ex, Num=>qr/\p{N}/ , Kigou=>qr/\p{Common}/, Space=>qr/\s/, 
+  #HalfK => qr/[\N{U+ff61}-\N{U+ff9f}]/, 
+  Hankk => qr/[\x{ff61}-\x{ff9f}]/, # 半角カナ 句読点も半濁点も含む。
+  Kana=>qr/[\p{Hiragana}\p{Katakana}]/, Han=>qr/\p{Han}/ ) if $o{j} ;
+splice @types , -1 , 0 , qw[ Num Hankk Kana Han Space Kigou]  if $o{j} ;
+my %chars ; # 各タイプの文字が何回出現したかを格納。
+my %lines ; # 各タイプの文字が何個の行に出現したかを格納。
+my @eaCc ; # 各タイプの文字が何番目の列(0始まり)に計何文字出現したかを格納。
+my @eaCu ; # 各タイプの文字が何番目の列(0始まり)に出現したかを格納。u はユニットつもり。
+my @eaCg ; # 各タイプの文字が何番目の列(0始まり)に、どんな文字が出現したか。
+my @eaC0 ; # 何番目の列(0始まり)に、ゼロ幅が何回出現したか?
+
+
+$o{'/'} = 1 if defined $o{g} ;
+srand do{ $o{s}//=(1<<32).'!' ; $o{s} = int rand $1 if $o{s}=~s/(.*)!$// ; $o{s} } ; # 乱数シードの指定
+eval { binmode STDOUT , "utf8" } if $o{j} ;
+my $colnames = <> if $o{'='} ; 
+
+& main () ; 
+& summary () ; 
+exit () ;
+
+
+sub cog ( $ ) { # char or group のつもり
+  ($o{g} // '') eq "1" ? $_[0] =~ s/.*\///r : # 斜線/の後ろのみ
+  ($o{g} // '') eq "0" ? $_[0] =~ s/\/.*//r : # 斜線/の前のみ
+  $_[0] ;
+}
+
+sub one_line_summary () { 
+  my $out = "Read lines: $." . sprintf "\t%0.6f sec calculation (chartype)." , tv_interval ${ dt_start } ; 
+  $out .= "\tRandom Seed = $o{s}" if defined $o{p} && $o{p} ne '1' ;
+
+  say STDERR CYAN BOLD DARK ITALIC $out ; 
+}
+
+sub summary () { 
+  one_line_summary if $o{2} // '' eq 'b' ;
+
+  say join "\t" , '' , do{ $o{0} ? (@types, "zero-width") : @types }  ; 
+  if ( $o{'/'} ){ 
+    say join "\t" , "PerLn.:" , map { cog + ($chars{$_}//0).'/'.($lines{$_}//0) } @types  ;
+  }
+  else { 
+    say join "\t" , "Chars:" , map { $chars{$_}//0 } @types  ;
+    say join "\t" , "Lines:" , map { $lines{$_}//0 } @types ;
+  }
+  #use Data::Dumper ; 
+  #print Dumper @eachC ;
+  if ( $o{c} ) { 
+    my @cn = do { chomp $colnames ; split /\t/, $colnames , -1 } if defined $colnames ;
+    #my $p = 1;
+    * arrange =  ! $o{b} ? sub { ($eaCc[$_[0]]{$_} // 0 ).'/'. ( $eaCu[$_[0]]{$_} // 0 ) } :
+     sub { my $t=$eaCg[$_[0]]{$_} ;
+      ($eaCc[$_[0]]{$_} // 0 ).'/'. ( $eaCu[$_[0]]{$_} // 0 ) 
+     #. (defined $eaCg[$_[0]]{$_}[0] ? "[" . $eaCg[$_[0]]{$_}[0]. "]"  : '' ) #} ; 
+     . (defined $t->[0] ? "[" . $t->[0]. "]"  : '' ) #} ; 
+     #. (defined $eaCg[$_[0]]{$_}[1] ? "[" . $eaCg[$_[0]]{$_}[1]. "]"  : '' ) } ; 
+     . (defined $t->[1] && $t->[0] ne $t->[1] ? "[" . $t->[1]. "]"  : '' ) } ; 
+
+    for my $p ( 0 .. $#eaCu ){ 
+      #say join "\t" , "Col." . ($p +1) . ":" , map { defined $eachC[$p]{$_} ? $eachC[$p]{$_} : 0 } @types ;
+      my $rowname = ( defined $cn[$p] && $o{n} ? ($p+1).':' : '' ) . (defined $cn[$p] ? $cn[$p] : "Col." . ($p +1) . ":" ) ; 
+      $rowname = decode_utf8 $rowname if $o{j} ;
+      my @out = ($rowname , map { cog & arrange($p)   } @types )  ;
+      push @out , $eaC0[$p] //0 if $o{0} ; 
+      say join "\t" ,@out ;
+    }
+  }
+  one_line_summary unless defined $o{2} && $o{2} =~ m/[0b]/ ;
+
+}
+
+sub storeMM ( $ @ ) { 
+   my $x0 = shift @_ ; 
+   my $x1 = minstr @_ ;
+   my $x2 = maxstr @_ ;
+   $x0->[0] = $x1 if ! defined $x0->[0] || defined $x1 && $x1 lt ($x0->[0] //$x1) ; 
+   $x0->[1] = $x2 if ! defined $x0->[1] || defined $x2 && $x2 gt ($x0->[1] //$x2) ; 
+
+}
+  
+sub main () { 
+  # 各行を確率的に読み込む場合。
+  my ($c , $coef ) = ( 0 , undef ) ;
+  if ( defined $o{p} && $o{p} != 1 ) { 
+    $coef = 1 / log ( 1 - do { my $p = $o{p} ;  $p < 0 ? 0 : $p >= 1 ? 1 - 1e-16 : $p } ) ; # -p で抽出確率に相当。 
+    $c  = int $coef * log rand ; 
+  }
+  * flag_p = defined $o{p} && $o{p} != 1 ? sub { goto EACH_INPUT_LINE if $c -- > 0 ; $c  = int $coef * log rand }  : sub {} ; 
+
+  * flag_c = $o{c} ? sub {} : sub { goto EACH_INPUT_LINE } ;
+  * flag_j = $o{j} ? sub { $_ = decode_utf8 ($_) } : sub {} ;
+  EACH_INPUT_LINE : 
+  while ( <> ) { 
+    do { my $t = <> } if  eof  && $o{'='} && ! eof ()  ; # 各ファイルの最後の行を読んでしまった場合に、-=指定なら次の先頭行も読んでしまう。
+    & flag_p ; # 確率的に入力行を読む場合の処理
+    chomp ; 
+    & flag_j ;
+    my $str0 = my $str = $_ ;
+    for ( @types ) { 
+       $chars {$_} += @{ [ $str =~ m/$ty2ex{$_}/g ] } ; 
+       $lines {$_} ++ if $str =~ s/$ty2ex{$_}//g ;  # 破壊的な操作なので、順番に注意。
+    } 
+
+    & flag_c ; # -c がなければすぐループの開始へ。
+    #$str = $str0 ;
+    my @F = split /\t/, $str0 , 0 ;
+    EACH_FIELD :
+    for my $p ( 0 .. $#F ) { 
+      my $str = $F [ $p ] ;
+      do { $eaC0 [ $p ] ++ ; next EACH_FIELD } if $str eq '' ;
+      for ( @types ) { 
+        my @eachChars = $str =~ m/$ty2ex{$_}/g  ;
+        $eaCc [ $p ]{ $_ } += @eachChars ; # 破壊的な操作なので、順番に注意。
+        $eaCu [ $p ]{ $_ } ++ if $str =~ s/$ty2ex{$_}//g ; 
+        if ( @eachChars && $o{b} ) { 
+          $eaCg [ $p ] { $_ } = \@{[undef,undef]} if ! defined $eaCg [ $p ] { $_ } ; 
+          storeMM ( $eaCg [ $p ] {$_ } , @eachChars ); 
+        }
+        # ^ 「何個の列に」も考えたい。
+      } ; 
+    } # END OF EACH_FIELD ;
+  } # END OF EACH_INPUT_LINE; 
+}
+
+
+sub VERSION_MESSAGE {}
+sub HELP_MESSAGE{
+    use FindBin qw[ $Script ] ;
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if $ARGV[1] eq 'opt' ? m/^\ +\-/ : s/^=head1// .. s/^=cut// ;
+    }
+    close $FH ;
+    exit 0 ;
+}
+
+=encoding utf8
+=head1
+
+    chartype 
+    chartype FILE 
+    chartype FILE1 FILE2 .. 
+
+    数値、大文字、小文字、半角空白、記号その他の出現した
+    文字数、行数を出力する。
+    -c によりカラムに分けて、上記の様子を出力する。
+    -j によりUTF8とみなして、
+     半角カナ、かな、漢字、全角空白、記号、その他について
+    出力する。
+
+    オプション: 
+      -= : 各ファイルの一行目を変数名の並びとして処理。複数ファイルが指定された場合は、どのファイルの一行目も計数対象としない。
+
+      -c : カラム毎の様子も出力するようにする。
+      -n : カラム番号も付加する。(-cと使う。)
+
+      -/ : 出力の各セルにおいて、"/"を挟んで左は合計数、右は単位数とする。
+      -e REGEX : 指定された正規表現の文字列に該当する個数も計数する。extra と表示される。
+      -0 : 幅が0のカラムを計数する。
+
+
+      -2 0 : サマリのサマリを出力しない。
+      -2 b : サマリのサマリを、サマリの最初の行に出力。
+
+      -g 0 : 文字数の合計(行毎と区切り毎)のみを表示
+      -g 1 : グループの数(行毎と区切り毎)のみを表示   
+
+      -p 1e-3 ; 各行を1000分の1の確率で読む。1e-3は0から1までの小数に変更できる。
+      -s ; 乱数シード
+
+      -b : どんな文字が出現したのかを具体例と共に出力。
+=cut
