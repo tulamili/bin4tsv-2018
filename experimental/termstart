@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 use 5.018 ; use strict ; use warnings ; 
-use Getopt::Std ; getopts '~=c:fhi:mw:0' , \my %o ; 
+use Getopt::Std ; getopts '~=c:f:hi:mw:0' , \my %o ; 
 use Time::Piece ; 
 use Term::ANSIColor qw [ :constants ] ; $Term::ANSIColor::AUTORESET = 1 ; 
 
