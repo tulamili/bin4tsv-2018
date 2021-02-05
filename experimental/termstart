@@ -1,0 +1,101 @@
+#!/usr/bin/perl
+use 5.018 ; use strict ; use warnings ; 
+use Getopt::Std ; getopts '~=c:fhi:mw:0' , \my %o ; 
+use Time::Piece ; 
+use Term::ANSIColor qw [ :constants ] ; $Term::ANSIColor::AUTORESET = 1 ; 
+
+sub main ( ) ; 
+sub trans ( $ ) ; # 変換
+
+sub trans0 ( $ ) { return $_[0] }  ; # 無変換
+
+* trans = * trans0 if $o{0} ; 
+
+my $sep = $o{i} // "\t" ; # 区切り文字
+my @cp = do{ my @t=eval "$o{c}" ; map {$_ > 0 ? $_-1 : $_ } @t } if $o{c} ; # どの列を(日時として)変換対象とするか
+my $fmt = $o{f} // '%Y-%m-%d' ; # 日時の形式
+# say join "\n" , @cp ; exit 0 ;
+main () ; 
+exit -1 ;
+
+sub main () { 
+  do { $_ = <> ; print $_ } if $o{'='} ; # -= 指定なら1行目はそのまま通貨。
+
+  if ( $o{c} ) { 
+    while ( <> ) {
+      chomp ; 
+      my @F = split /$sep/o , $_ , -1 ; 
+      $F[ $_ ] = trans $F [ $_ ] for @cp ;
+      say join $sep, @F ; 
+    }
+  } else { 
+    say do { chomp ; trans $_ } while ( <> ) ; 
+  }
+}
+
+sub trans ($) { 
+
+  my $t = eval { Time::Piece -> strptime ( $_[0] , $fmt ) } ; # 与えられた日付形式で読み取る。
+  print STDERR FAINT BOLD BRIGHT_RED "\$@ : $@" and return if $@ ; # <-- 先頭行の処理で引っかかる筈
+
+  eval { $t -= ( $t ->  day_of_week () - $o{w} ) % 7 * 86400 } if defined $o{w} ;  # その日または直前の日曜日の日付を算出する。
+  eval { $t += 6 * 86400 } if $o{w} && $o{'~'} ;  # その日または直前の日曜日の日付を算出する。
+  eval { $t -= ( $t ->  day_of_month ()  - 1 ) * 86400 } if defined $o{m} ;  # その月の最初の日。
+  eval { $t += ( $t ->  month_last_day () - 1 ) * 86400 } if $o{m} && $o{'~'} ;  # その日または直前の日曜日の日付を算出する。
+  print STDERR FAINT BOLD BRIGHT_RED "\$@ : $@"  if $@ ; 
+  $_ [0] = $t -> strftime ( $fmt ) ; 
+  return $_[ 0 ] ; 
+}
+
+
+
+=encoding utf8
+
+=head1
+
+  $0 FILE1
+
+  各行または指定列(-cで指定)の日時文字列に対して、
+   -w 0 ならばその日時が属する日曜始まりの先頭日、-m ならばその月の先頭日に変換する。
+
+オプション: 
+
+  -0  ;　何も変換しない(テスト用)
+
+  -c N : 1始まりで左から何列目を変換するかを指定する。 -c 0 は-cを指定しないのと同等になる。
+  -i str ; 区切り文字の指定(未指定ならタブ文字)。
+
+  -f fmt : strftimeまたはstfptimeで用いる日時文字列の指定。未指定なら'%Y-%m-%d'。
+
+  -h : 各時の先頭の日時を返す。例 2021-02-03T04:05:06 -> 2021-02-03T04:00:00 <-- - !! 未実装
+  -m : 各月の先頭の日
+  -w N : 週の先頭が N=0,1,2,..6 に応じて、日曜日、月曜日、..、土曜日になるようにする。   
+  -~ : 先頭日で無くて、末尾の日付(日時)を返す。   
+
+  -= ; 先頭行は処理しないで無変換とする。
+
+開発上のメモ: 
+  # できた→ * -c N による指定は、1列のみで無くて複数列を指定できるようにしたい。
+
+=cut
+
+## ヘルプとバージョン情報
+BEGIN {
+  $Getopt::Std::STANDARD_HELP_VERSION = 1 ;
+  grep { m/--help/} @ARGV and *VERSION_MESSAGE = sub {} ;
+  our $VERSION = 0.11 ;
+    # 最初は 0.21 を目安とする。
+    # 1.00 以上とする必要条件は英語版のヘルプをきちんと出すこと。
+    # 2.00 以上とする必要条件はテストコードが含むこと。
+}
+sub HELP_MESSAGE{
+    use FindBin qw[ $Script ] ;
+    $ARGV[1] //= '' ;
+    open my $FH , '<' , $0 ;
+    while(<$FH>){
+        s/\$0/$Script/g ;
+        print $_ if $ARGV[1] eq 'opt' ? m/^\ +\-/ : s/^=head1// .. s/^=cut// ;
+    }
+    close $FH ;
+    exit 0 ;
+}
